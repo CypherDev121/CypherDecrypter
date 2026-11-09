@@ -1,9 +1,8 @@
 name: sync-site
 
-# Synchronise le site publie dans ce depot prive et le range par type :
-# index.html a la racine, css/ pour les styles, js/ pour les modules,
-# assets/brand/ pour les logos. Le workflow se verifie lui-meme et ecrit
-# son diagnostic dans SYNC.txt.
+# Synchronise le site publie dans ce depot prive, le range par type, et
+# injecte le numero de version lu dans le fichier VERSION.
+# Declencheurs : push sur main, manuel, et chaque nuit a 04:00 UTC.
 on:
   push:
     branches: [main]
@@ -20,10 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Telecharger et reorganiser
+      - name: Telecharger, reorganiser et versionner
         run: |
           set -uo pipefail
           BASE="https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page"
+
+          VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+          [ -z "$VERSION" ] && VERSION="0.0.0"
+          echo "Version lue dans VERSION : $VERSION"
+
           mkdir -p js css assets/brand
 
           fetch() {
@@ -57,6 +61,12 @@ jobs:
             -e 's#(src|href)="brand/#\1="assets/brand/#g' \
             index.html
 
+          # Badge de version dans l'en-tete, juste apres le badge "Lua 5.4".
+          # Idempotent : le HTML est retelecharge a chaque passage.
+          if ! grep -q 'data-site-version' index.html; then
+            sed -i "s#<span class=\"badge badge-azure\">Lua 5.4</span>#&<span class=\"badge badge-azure\" data-site-version=\"v$VERSION\" title=\"Version du site\">v$VERSION</span>#" index.html
+          fi
+
           # Verification : chaque reference locale doit exister sur disque.
           grep -oE '(src|href)="[^"]+"' index.html | sed -E 's/^[a-z]+="//; s/"$//' | sort -u | while read -r p; do
             case "$p" in http*|data:*|\#*|"") continue ;; esac
@@ -66,12 +76,13 @@ jobs:
 
           {
             echo "Site source : $BASE/"
+            echo "Version : v$VERSION"
+            echo ""
+            echo "Badge de version dans le HTML :"
+            grep -o 'data-site-version="[^"]*"' index.html || echo "ABSENT"
             echo ""
             echo "Balises script :"
             grep -oE '<script[^>]*>' index.html || true
-            echo ""
-            echo "Balises link :"
-            grep -oE '<link[^>]*>' index.html || true
             echo ""
             echo "Verification des references :"
             cat /tmp/check.txt
@@ -106,6 +117,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Aucun changement depuis la derniere synchronisation"
           else
-            git commit -m "sync: mise a jour du site publie $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+            V="$(tr -d '[:space:]' < VERSION 2>/dev/null || echo 0.0.0)"
+            git commit -m "sync: site publie v$V ($(date -u +%Y-%m-%dT%H:%MZ)) [skip ci]"
             git push
           fi
