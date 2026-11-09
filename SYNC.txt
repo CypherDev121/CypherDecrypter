@@ -44,7 +44,7 @@ Arborescence finale (octets, chemin) :
     5531  .github/workflows/sync-site.yml
      257  .gitignore
      970  CHANGELOG.md
-    3548  README.md
+    3983  README.md
        6  VERSION
      382  assets/brand/freebuff.svg
      837  assets/brand/github.svg
