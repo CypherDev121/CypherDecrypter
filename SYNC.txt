@@ -56,7 +56,7 @@ Arborescence finale (octets, chemin) :
    11789  js/accounts.js
    21826  js/anti.js
   128262  js/app.js
-   18712  js/compat.js
+   18642  js/compat.js
    40225  js/decompile.js
     7699  js/deobf.js
     6405  js/fxap.js
@@ -67,4 +67,4 @@ Arborescence finale (octets, chemin) :
    12466  js/recover.js
    10439  js/sanitize.js
     7553  js/zip.js
-    9192  tests/verify-decrypt.cjs
+   10613  tests/verify-decrypt.cjs
