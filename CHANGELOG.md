@@ -5,11 +5,24 @@ Format [SemVer](https://semver.org/lang/fr/).
 
 La version affichee sur le site est **injectee depuis le fichier `VERSION`** par le workflow de synchronisation : il suffit de modifier `VERSION` (et ce changelog) pour que le badge suive au prochain passage.
 
+## [6.1.2] - 2026-11-09
+
+### Corrige
+
+- Le `.fxap` de la ressource (manifeste du conteneur escrow) est retire lui aussi en mode sans escrow : il ne sert plus a rien sans les scripts chiffres, et il ne doit donc plus etre signale comme un fichier illisible a « relancer seul ».
+- Le rapport de l'archive decrivait l'export que `app.js` croyait produire : il annoncait encore « N conteneur(s) FXAP encore chiffre(s) sont recopies tels quels » et un echec de lecture du `.fxap`, alors que ces fichiers ne sont plus dans l'archive. En mode sans escrow, ces deux phrases sont remplacees par l'etat reel de l'archive, avec renvoi vers `ESCROW-RETIRE.txt`.
+
+### Modifie
+
+- Le choix de l'option est memorise dans le navigateur (`localStorage`) : un export ulterieur ne repart plus decoche par inadvertance.
+- Le texte de l'option precise que le `.fxap` part avec les conteneurs et que le choix est retenu.
+- Tests ajoutes : `.fxap` retire / conserve selon l'option, reecriture du rapport, rapport laisse intact quand il n'y a rien a corriger.
+
 ## [6.1.1] - 2026-11-09
 
 ### Corrige
 
-- Regression de la 6.1.0 : option d'export laissee decochee, l'archive etait ecrite a partir de la liste filtree, donc les conteneurs escrow disparaissaient alors que l'option etait desactivee. L'archive est maintenant ecrite a partir de la liste d'origine, conteneurs compris, avec la note `ESCROW-INFO.txt` en plus. Le test `option desactivee : conteneur garde` couvre ce cas.
+- Regression de la 6.1.0 : option d'export laissee decochee, l'archive etait ecrite a partir de la liste filtree, donc les conteneurs escrow disparaissaient alors que l'option etait desactivee. L'archive est maintenant ecrite a partir de la liste d'origine, conteneurs compris, avec la note `ESCROW-INFO.txt` en plus.
 
 ## [6.1.0] - 2026-11-09
 
