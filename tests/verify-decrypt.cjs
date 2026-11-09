@@ -48,6 +48,9 @@ function check(name, cond, extra) {
   check('Lua54.parseChunk est expose', typeof L.parseChunk === 'function');
   check('Lua54.parse est expose (correctif)', typeof L.parse === 'function');
   check('Recover.decrypt est expose', typeof R.decrypt === 'function');
+  check('filtre escrow expose', !!(CE && typeof CE.isEscrowEntry === 'function'));
+  if (!CE) throw new Error('CypherEscrow absent : compat.js n a pas termine son evaluation');
+  check('le retrait escrow est actif par defaut', CE.get() === true);
 
   const bytes = new Uint8Array(fs.readFileSync(LUAC));
 
@@ -81,9 +84,6 @@ function check(name, cond, extra) {
   const cbcCipher = new Uint8Array(Buffer.concat([cb.update(Buffer.from(bytes)), cb.final()]));
   const rotCbc = await R.decrypt(cbcCipher, { key: keyBytes, mode: 'CBC', iv: new Uint8Array(16), lua: L });
   check('AES-CBC dechiffre toujours', !!(rotCbc && rotCbc.ok === true), rotCbc && rotCbc.reason);
-
-  check('filtre escrow expose', !!(CE && typeof CE.isEscrowEntry === 'function'));
-  if (!CE) throw new Error('CypherEscrow absent : compat.js n a pas termine son evaluation');
 
   const encContainer = new Uint8Array(Buffer.concat([
     Buffer.from('FXAP'), nodeCrypto.randomBytes(400)
@@ -129,8 +129,7 @@ function check(name, cond, extra) {
     throw new Error('API Zip incomplete');
   }
 
-  /* ---------------- mode sans escrow ---------------- */
-  CE.set(true);
+  /* ---------------- mode automatique (defaut) ---------------- */
   const reportSrc = [
     'CypherDecrypter - Clean FXAP & Mapping',
     "1 fichier(s) ne peuvent pas etre exportes (lecture impossible ou budget memoire depasse) : tstudio_zmapdata/.fxap",
@@ -138,6 +137,7 @@ function check(name, cond, extra) {
     ''
   ].join('\n');
 
+  // Aucun appel a set() : on exporte tel quel, comme le fait le site au chargement.
   const zOn = ctx.Zip.create([
     escrowEntry,
     { path: 'tstudio_zmapdata/.fxap', bytes: new Uint8Array(8) },
@@ -149,15 +149,15 @@ function check(name, cond, extra) {
 
   const listed = await ctx.Zip.entries(zOn);
   const names = listed.map((e) => e.name);
-  check('zip sans escrow : conteneur absent', names.indexOf('client/activate_ipl.lua') === -1, names.join(', '));
-  check('zip sans escrow : .fxap retire', names.indexOf('tstudio_zmapdata/.fxap') === -1, names.join(', '));
-  check('zip sans escrow : asset present', names.indexOf('stream/a.ymap') !== -1, names.join(', '));
-  check('zip sans escrow : rapport present', names.indexOf('ESCROW-RETIRE.txt') !== -1, names.join(', '));
-  check('zip sans escrow : pas de note informative', names.indexOf('ESCROW-INFO.txt') === -1, names.join(', '));
+  check('sans cocher : conteneur absent', names.indexOf('client/activate_ipl.lua') === -1, names.join(', '));
+  check('sans cocher : .fxap retire', names.indexOf('tstudio_zmapdata/.fxap') === -1, names.join(', '));
+  check('sans cocher : asset present', names.indexOf('stream/a.ymap') !== -1, names.join(', '));
+  check('sans cocher : rapport present', names.indexOf('ESCROW-RETIRE.txt') !== -1, names.join(', '));
+  check('sans cocher : pas de note informative', names.indexOf('ESCROW-INFO.txt') === -1, names.join(', '));
 
   const maniEntry = listed.filter((e) => e.name === 'fxmanifest.lua')[0];
   const inside = maniEntry && maniEntry.data ? Buffer.from(maniEntry.data).toString('utf8') : '';
-  check('zip sans escrow : manifeste nettoye a l interieur',
+  check('sans cocher : manifeste nettoye a l interieur',
     inside.length > 0 && inside.indexOf('activate_ipl.lua') === -1 && inside.indexOf('client/other.lua') !== -1,
     inside.slice(0, 120));
 
@@ -169,12 +169,11 @@ function check(name, cond, extra) {
     repText.slice(0, 200));
   check('rapport : mentionne le retrait du .fxap', repText.indexOf('.fxap de la ressource') !== -1, repText.slice(0, 200));
 
-  const fxapReport = CE.isEscrowForRemoval({ path: 'tstudio_zmapdata/.fxap', bytes: new Uint8Array(8) });
-  check('mode sans escrow : .fxap reconnu comme a retirer', fxapReport === true);
+  check('mode sans escrow : .fxap reconnu comme a retirer', CE.isEscrowForRemoval({ path: 'tstudio_zmapdata/.fxap', bytes: new Uint8Array(8) }) === true);
   check('mode sans escrow : source lua non retiree', CE.isEscrowForRemoval({ path: 'client/x.lua', text: 'local a = 1\n' }) === false);
   check('rapport inchange hors escrow', CE.rewriteFxapReport('rien a corriger ici\n', { removed: 0 }) === 'rien a corriger ici\n');
 
-  /* ---------------- option desactivee ---------------- */
+  /* ---------------- desaccordement volontaire ---------------- */
   CE.set(false);
   const zOff = await ctx.Zip.entries(ctx.Zip.create([
     escrowEntry,
@@ -188,15 +187,13 @@ function check(name, cond, extra) {
 
   const info = zOff.filter((e) => e.name === 'ESCROW-INFO.txt')[0];
   const infoText = info && info.data ? Buffer.from(info.data).toString('utf8') : '';
-  check('note informative : nomme le fichier et l option',
-    infoText.indexOf('client/activate_ipl.lua') !== -1 && /sans aucun fichier escrow/.test(infoText),
-    infoText.slice(0, 120));
+  check('note informative : nomme le fichier', infoText.indexOf('client/activate_ipl.lua') !== -1, infoText.slice(0, 120));
 
-  const zNoEscrow = ctx.Zip.create([{ path: 'client/x.lua', text: 'local a = 1\n' }], { comment: 'test' });
-  const noEscrowNames = (await ctx.Zip.entries(zNoEscrow)).map((e) => e.name);
+  const zPlain = ctx.Zip.create([{ path: 'client/x.lua', text: 'local a = 1\n' }], { comment: 'test' });
+  const plainNames = (await ctx.Zip.entries(zPlain)).map((e) => e.name);
   check('archive sans conteneur : aucune note ajoutee',
-    noEscrowNames.indexOf('ESCROW-INFO.txt') === -1 && noEscrowNames.indexOf('client/x.lua') !== -1,
-    noEscrowNames.join(', '));
+    plainNames.indexOf('ESCROW-INFO.txt') === -1 && plainNames.indexOf('client/x.lua') !== -1,
+    plainNames.join(', '));
 
   const app = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
   console.log('appels Lua54.parse( dans app.js : ' + (app.match(/Lua54\.parse\(/g) || []).length);

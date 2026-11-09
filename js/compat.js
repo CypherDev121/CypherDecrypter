@@ -8,7 +8,8 @@
       deux fois, la TypeError etait avalee par un catch vide.
    2. AES-ECB passait par AES-CBC bloc par bloc : WebCrypto retire le
       remplissage PKCS#7, ce qui detruit le clair et leve une erreur.
-   3. Option d'export sans escrow, interceptee au niveau de Zip.create.
+   3. Export sans escrow, actif par defaut et sans intervention : intercepte au
+      niveau de Zip.create, le seul point de passage de l'export.
 
    Rejoue au DOMContentLoaded : Recover et Zip n'existent pas forcement quand
    ce fichier est evalue. */
@@ -16,7 +17,7 @@
   'use strict';
 
   var doc = (typeof document !== 'undefined') ? document : null;
-  var OPT = { removeEscrow: false };
+  var OPT = { removeEscrow: true };
   var STORE = 'cypherdecrypter.noEscrow';
 
   /* ---------------- 1. alias Lua54.parse ---------------- */
@@ -215,7 +216,7 @@
     return false;
   }
 
-  /* En mode sans escrow, le .fxap de la ressource part toujours : c'est le
+  /* Le .fxap de la ressource part toujours avec les conteneurs : c'est le
      manifeste du conteneur, sans objet quand les scripts chiffres sont retires.
      Il ne doit donc plus etre signale comme un fichier illisible a relancer. */
   function isEscrowForRemoval(entry) {
@@ -267,7 +268,7 @@
   /* ---------------- 5. rapports de l'archive ---------------- */
   function escrowReport(names) {
     var lines = [];
-    lines.push('CypherDecrypter - export sans escrow');
+    lines.push('CypherDecrypter - export sans escrow (automatique)');
     lines.push('');
     lines.push(names.length + ' fichier(s) escrow ont ete retires de cette archive :');
     names.forEach(function (n) { lines.push('- ' + n); });
@@ -279,13 +280,15 @@
     lines.push('- les assets de la map (stream, .ymap, .ytyp) ne sont pas chiffres et restent intacts ;');
     lines.push('- le .fxap de la ressource (manifeste du conteneur) est retire aussi : sans les scripts chiffres il ne sert plus a rien.');
     lines.push('');
-    lines.push('Pour recuperer ces scripts, il faut la version non escrow fournie par l\'auteur de la ressource.');
+    lines.push('Ce retrait est automatique. Pour conserver les conteneurs et laisser FiveM');
+    lines.push('les dechiffrer lui-meme, decochez l\'option dans l\'onglet Clean FXAP & Mapping.');
+    lines.push('Pour recuperer ces scripts en clair, il faut la version non escrow de l\'auteur.');
     return lines.join('\n') + '\n';
   }
 
   function escrowInfo(dropped) {
     var lines = [];
-    lines.push('CypherDecrypter - conteneurs escrow presents dans cette archive');
+    lines.push('CypherDecrypter - conteneurs escrow conserves (option desactivee)');
     lines.push('');
     lines.push(dropped.length + ' fichier(s) chiffre(s) par FXAP sont conserves tels quels :');
     dropped.forEach(function (f) { lines.push('- ' + String(f.path)); });
@@ -294,17 +297,15 @@
     lines.push('comme binaires, c\'est normal. FiveM les dechiffre lui-meme a l\'execution, donc');
     lines.push('la ressource fonctionne si vous les laissez en place.');
     lines.push('');
-    lines.push('Pour obtenir une archive sans aucun fichier escrow, cochez l\'option');
-    lines.push('"Produire une archive sans aucun fichier escrow" dans l\'onglet');
-    lines.push('Clean FXAP & Mapping et relancez l\'export. Le choix est memorise pour');
-    lines.push('les exports suivants.');
+    lines.push('Le retrait est actif par defaut : ici l\'option a ete decochee volontairement.');
+    lines.push('Recochez-la dans l\'onglet Clean FXAP & Mapping pour produire une archive');
+    lines.push('sans aucun fichier escrow.');
     return lines.join('\n') + '\n';
   }
 
   /* Le rapport produit par app.js decrit l'archive qu'il croyait ecrire : il
      annonce les conteneurs recopies et reclame un nouvel essai pour le .fxap
-     illisible. En mode sans escrow, ces deux phrases sont fausses. On les
-     remplace par l'etat reel de l'archive. */
+     illisible. En mode sans escrow, ces deux phrases sont fausses. */
   function rewriteFxapReport(text, stats) {
     if (typeof text !== 'string') return text;
     if (!stats || !stats.removed) return text;
@@ -352,7 +353,7 @@
           }
           if (!dropped.length) return originalCreate.apply(Z, arguments);
 
-          /* Option desactivee : liste d'origine ecrite telle quelle. */
+          /* Option desactivee a la main : liste d'origine ecrite telle quelle. */
           if (!OPT.removeEscrow) {
             return originalCreate.call(Z, files.concat([
               { path: 'ESCROW-INFO.txt', text: escrowInfo(dropped) }
@@ -387,10 +388,15 @@
   }
 
   /* ---------------- 7. interface ---------------- */
+  /* Le retrait est actif par defaut. Le stockage ne sert qu'a retenir un
+     desaccordement volontaire (valeur '0'). */
   function loadPref() {
     try {
-      if (root.localStorage && root.localStorage.getItem(STORE) === '1') OPT.removeEscrow = true;
-    } catch (e) { /* stockage indisponible */ }
+      var v = root.localStorage ? root.localStorage.getItem(STORE) : null;
+      OPT.removeEscrow = (v !== '0');
+    } catch (e) {
+      OPT.removeEscrow = true;
+    }
   }
 
   function savePref(on) {
@@ -435,18 +441,19 @@
     text.style.lineHeight = '1.5';
 
     var title = doc.createElement('strong');
-    title.textContent = 'Produire une archive sans aucun fichier escrow';
+    title.textContent = 'Archive sans aucun fichier escrow (actif par defaut)';
 
     var detail = doc.createElement('span');
     detail.style.display = 'block';
     detail.style.opacity = '0.85';
-    detail.textContent = 'Les conteneurs chiffres et le .fxap de la ressource sont retires de ' +
-      'l\'archive, les fxmanifest sont nettoyes : aucun fichier escrow ne reste dedans. ' +
-      'Les scripts concernes ne seront plus charges par FiveM (elevateurs, chargement ' +
-      'd\'IPL, interaction, entitysets) ; la map et son stream restent intacts. Detail ' +
-      'dans ESCROW-RETIRE.txt. Le choix est memorise. Rien ne peut dechiffrer un ' +
-      'conteneur escrow sans la cle de l\'auteur : cette option retire les fichiers, ' +
-      'elle ne les dechiffre pas.';
+    detail.textContent = 'Rien a faire : les conteneurs chiffres et le .fxap de la ressource ' +
+      'sont retires de chaque export, les fxmanifest sont nettoyes, aucun fichier escrow ' +
+      'ne reste dans l\'archive. Les scripts concernes ne seront plus charges par FiveM ' +
+      '(elevateurs, chargement d\'IPL, interaction, entitysets) ; la map et son stream ' +
+      'restent intacts. Detail dans ESCROW-RETIRE.txt. Decoche cette case uniquement si ' +
+      'tu veux garder les conteneurs et laisser FiveM les dechiffrer lui-meme. Rien ne ' +
+      'peut dechiffrer un conteneur escrow sans la cle de l\'auteur : ce mode retire les ' +
+      'fichiers, il ne les dechiffre pas.';
 
     text.appendChild(title);
     text.appendChild(detail);
@@ -473,7 +480,10 @@
     installUi();
     if (doc) {
       var cb = doc.getElementById('fxap-no-escrow');
-      if (cb) cb.checked = OPT.removeEscrow;
+      if (cb) {
+        cb.checked = OPT.removeEscrow;
+        paint(doc.getElementById('fxap-no-escrow-box'), cb);
+      }
     }
   }
 
