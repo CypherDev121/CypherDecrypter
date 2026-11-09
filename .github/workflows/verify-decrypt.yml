@@ -1,0 +1,122 @@
+name: verify-decrypt
+
+# Verifie sur un vrai .luac 5.4 que le decryptage et l'alias Lua54.parse
+# fonctionnent, et que AES-ECB sort le meme clair que l'implementation de
+# reference de Node. Aucun navigateur : tout tourne sous Node.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'js/compat.js'
+      - 'js/recover.js'
+      - 'js/lua54.js'
+      - 'js/decompile.js'
+      - '.github/workflows/verify-decrypt.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installer Lua 5.4
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y lua5.4
+
+      - name: Compiler un chunk de reference
+        run: |
+          printf 'local n = 0\nfor i = 1, 3 do n = n + i end\nprint("hi", n)\n' > /tmp/a.lua
+          luac5.4 -o /tmp/a.luac /tmp/a.lua
+          ls -l /tmp/a.luac
+
+      - name: Tests
+        run: |
+          cat > /tmp/t.cjs <<'JS'
+          const fs = require('fs');
+          const vm = require('vm');
+          const nodeCrypto = require('crypto');
+
+          const ctx = {
+            console, TextDecoder, TextEncoder, Uint8Array, ArrayBuffer, DataView,
+            Math, Date, Promise, BigInt, JSON, String, Number, Object, Array,
+            Error, RegExp, Set, Map, Buffer, Blob, Response, DecompressionStream,
+            crypto: nodeCrypto.webcrypto
+          };
+          ctx.globalThis = ctx;
+          vm.createContext(ctx);
+
+          function load(f) {
+            vm.runInContext(fs.readFileSync('js/' + f, 'utf8'), ctx, { filename: f });
+          }
+          ['lua54.js', 'decompile.js', 'recover.js', 'compat.js'].forEach(load);
+
+          const L = ctx.Lua54;
+          const R = ctx.Recover;
+          let fails = 0;
+
+          function check(name, cond, extra) {
+            if (cond) {
+              console.log('OK   ' + name);
+            } else {
+              console.log('FAIL ' + name + (extra ? ' :: ' + extra : ''));
+              fails++;
+            }
+          }
+
+          (async function () {
+            check('Lua54.parseChunk est expose', typeof L.parseChunk === 'function');
+            check('Lua54.parse est expose (correctif)', typeof L.parse === 'function');
+            check('Recover.decrypt est expose', typeof R.decrypt === 'function');
+
+            const bytes = new Uint8Array(fs.readFileSync('/tmp/a.luac'));
+
+            let viaParse = null;
+            try { viaParse = L.parse(bytes); } catch (e) { console.log('err parse: ' + e.message); }
+            check('Lua54.parse lit un vrai .luac', !!(viaParse && viaParse.main));
+
+            let code = '';
+            try { code = L.decompile(viaParse.main, { fileName: 'a.luac' }).code; } catch (e) { console.log('err decompile: ' + e.message); }
+            check('decompilation produite', code.length > 20, code.slice(0, 60));
+
+            const key = nodeCrypto.randomBytes(16);
+            const keyBytes = new Uint8Array(key);
+
+            /* ECB : chiffrement de reference Node */
+            const ec = nodeCrypto.createCipheriv('aes-128-ecb', key, null);
+            const ecbCipher = new Uint8Array(Buffer.concat([ec.update(Buffer.from(bytes)), ec.final()]));
+
+            const rotEcb = await R.decrypt(ecbCipher, { key: keyBytes, mode: 'ECB', lua: L });
+            check('AES-ECB dechiffre le chunk', !!(rotEcb && rotEcb.ok === true), rotEcb && rotEcb.reason);
+            if (rotEcb && rotEcb.ok) {
+              const same = Buffer.compare(
+                Buffer.from(rotEcb.data),
+                Buffer.from(bytes.subarray(0, rotEcb.data.length))
+              ) === 0;
+              check('AES-ECB rend exactement le clair', same);
+            }
+
+            /* CBC : la voie d'origine doit rester intacte */
+            const iv = Buffer.alloc(16);
+            const cb = nodeCrypto.createCipheriv('aes-128-cbc', key, iv);
+            const cbcCipher = new Uint8Array(Buffer.concat([cb.update(Buffer.from(bytes)), cb.final()]));
+            const rotCbc = await R.decrypt(cbcCipher, { key: keyBytes, mode: 'CBC', iv: new Uint8Array(16), lua: L });
+            check('AES-CBC dechiffre toujours', !!(rotCbc && rotCbc.ok === true), rotCbc && rotCbc.reason);
+
+            /* La correction doit etre dans le HTML publie, pas dans app.js */
+            const app = fs.readFileSync('js/app.js', 'utf8');
+            const calls = (app.match(/Lua54\.parse\(/g) || []).length;
+            console.log('appels Lua54.parse( dans app.js : ' + calls);
+
+            console.log(fails ? fails + ' test(s) en echec' : 'tous les tests passent');
+            process.exit(fails ? 1 : 0);
+          })();
+          JS
+          node /tmp/t.cjs
