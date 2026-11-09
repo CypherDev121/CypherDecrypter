@@ -1,8 +1,8 @@
 Site source : https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page/
-Version : v6.0.1
+Version : v6.1.0
 
 Badge de version dans le HTML :
-data-site-version="v6.0.1"
+data-site-version="v6.1.0"
 
 Balises script :
 <script src="js/lua54.js">
@@ -44,7 +44,7 @@ Arborescence finale (octets, chemin) :
     5531  .github/workflows/sync-site.yml
     1223  .github/workflows/verify-decrypt.yml
      257  .gitignore
-    2086  CHANGELOG.md
+    3753  CHANGELOG.md
     3983  README.md
        6  VERSION
      382  assets/brand/freebuff.svg
@@ -56,7 +56,7 @@ Arborescence finale (octets, chemin) :
    11789  js/accounts.js
    21826  js/anti.js
   128262  js/app.js
-   14659  js/compat.js
+   18638  js/compat.js
    40225  js/decompile.js
     7699  js/deobf.js
     6405  js/fxap.js
@@ -67,4 +67,4 @@ Arborescence finale (octets, chemin) :
    12466  js/recover.js
    10439  js/sanitize.js
     7553  js/zip.js
-    8398  tests/verify-decrypt.cjs
+    9192  tests/verify-decrypt.cjs
