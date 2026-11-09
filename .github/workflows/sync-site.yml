@@ -1,7 +1,8 @@
 name: sync-site
 
-# Synchronise le site publie dans ce depot prive, le range par type, et
-# injecte le numero de version lu dans le fichier VERSION.
+# Synchronise le site publie dans ce depot prive, le range par type, injecte
+# le numero de version lu dans le fichier VERSION, et publie une release
+# GitHub quand cette version n'en a pas encore.
 # Declencheurs : push sur main, manuel, et chaque nuit a 04:00 UTC.
 on:
   push:
@@ -121,3 +122,20 @@ jobs:
             git commit -m "sync: site publie v$V ($(date -u +%Y-%m-%dT%H:%MZ)) [skip ci]"
             git push
           fi
+
+      - name: Publier la release de la version courante
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="$(tr -d '[:space:]' < VERSION 2>/dev/null || echo 0.0.0)"
+          echo "Version a publier : v$V"
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "La release v$V existe deja, rien a faire"
+            exit 0
+          fi
+          gh release create "v$V" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$(git rev-parse HEAD)" \
+            --title "v$V" \
+            --notes-file CHANGELOG.md
+          echo "Release v$V publiee"
