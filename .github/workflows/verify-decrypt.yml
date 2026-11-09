@@ -1,8 +1,10 @@
 name: verify-decrypt
 
 # Verifie sans navigateur : lecture et decompilation d'un vrai .luac 5.4,
-# AES-ECB (doit rendre exactement le clair) et AES-CBC (doit rester intact),
-# puis le filtre d'export sans escrow.
+# AES-ECB (doit rendre exactement le clair), AES-CBC (doit rester intact),
+# puis le filtre d'export sans escrow. Le harnais vit dans
+# tests/verify-decrypt.cjs pour que le journal du job reste court et lisible
+# (un bloc `run` multiligne est recopie en entier dans le log).
 on:
   workflow_dispatch:
   push:
@@ -12,6 +14,7 @@ on:
       - 'js/lua54.js'
       - 'js/decompile.js'
       - 'js/zip.js'
+      - 'tests/verify-decrypt.cjs'
       - '.github/workflows/verify-decrypt.yml'
 
 permissions:
@@ -39,115 +42,4 @@ jobs:
           ls -l /tmp/a.luac
 
       - name: Tests
-        run: |
-          cat > /tmp/t.cjs <<'JS'
-          const fs = require('fs');
-          const vm = require('vm');
-          const nodeCrypto = require('crypto');
-
-          const ctx = {
-            console, TextDecoder, TextEncoder, Uint8Array, ArrayBuffer, DataView,
-            Math, Date, Promise, BigInt, JSON, String, Number, Object, Array,
-            Error, RegExp, Set, Map, Buffer, Blob, Response, DecompressionStream,
-            crypto: nodeCrypto.webcrypto
-          };
-          ctx.globalThis = ctx;
-          vm.createContext(ctx);
-
-          function load(f) {
-            vm.runInContext(fs.readFileSync('js/' + f, 'utf8'), ctx, { filename: f });
-          }
-          ['lua54.js', 'decompile.js', 'recover.js', 'zip.js', 'compat.js'].forEach(load);
-
-          const L = ctx.Lua54;
-          const R = ctx.Recover;
-          const CE = ctx.CypherEscrow;
-          let fails = 0;
-
-          function check(name, cond, extra) {
-            if (cond) {
-              console.log('OK   ' + name);
-            } else {
-              console.log('FAIL ' + name + (extra ? ' :: ' + extra : ''));
-              fails++;
-            }
-          }
-
-          (async function () {
-            check('Lua54.parseChunk est expose', typeof L.parseChunk === 'function');
-            check('Lua54.parse est expose (correctif)', typeof L.parse === 'function');
-            check('Recover.decrypt est expose', typeof R.decrypt === 'function');
-
-            const bytes = new Uint8Array(fs.readFileSync('/tmp/a.luac'));
-
-            let viaParse = null;
-            try { viaParse = L.parse(bytes); } catch (e) { console.log('err parse: ' + e.message); }
-            check('Lua54.parse lit un vrai .luac', !!(viaParse && viaParse.main));
-
-            let code = '';
-            try { code = L.decompile(viaParse.main, { fileName: 'a.luac' }).code; } catch (e) { console.log('err decompile: ' + e.message); }
-            check('decompilation produite', code.length > 20, code.slice(0, 60));
-
-            const key = nodeCrypto.randomBytes(16);
-            const keyBytes = new Uint8Array(key);
-
-            const ec = nodeCrypto.createCipheriv('aes-128-ecb', key, null);
-            const ecbCipher = new Uint8Array(Buffer.concat([ec.update(Buffer.from(bytes)), ec.final()]));
-
-            const rotEcb = await R.decrypt(ecbCipher, { key: keyBytes, mode: 'ECB', lua: L });
-            check('AES-ECB dechiffre le chunk', !!(rotEcb && rotEcb.ok === true), rotEcb && rotEcb.reason);
-            if (rotEcb && rotEcb.ok) {
-              const same = Buffer.compare(
-                Buffer.from(rotEcb.data),
-                Buffer.from(bytes.subarray(0, rotEcb.data.length))
-              ) === 0;
-              check('AES-ECB rend exactement le clair', same);
-            }
-
-            const iv = Buffer.alloc(16);
-            const cb = nodeCrypto.createCipheriv('aes-128-cbc', key, iv);
-            const cbcCipher = new Uint8Array(Buffer.concat([cb.update(Buffer.from(bytes)), cb.final()]));
-            const rotCbc = await R.decrypt(cbcCipher, { key: keyBytes, mode: 'CBC', iv: new Uint8Array(16), lua: L });
-            check('AES-CBC dechiffre toujours', !!(rotCbc && rotCbc.ok === true), rotCbc && rotCbc.reason);
-
-            /* ---- export sans escrow ---- */
-            check('filtre escrow expose', !!(CE && typeof CE.isEscrowEntry === 'function'));
-
-            const encContainer = new Uint8Array(Buffer.concat([
-              Buffer.from('FXAP'), nodeCrypto.randomBytes(400)
-            ]));
-            const escrowEntry = { path: 'client/activate_ipl.lua', bytes: encContainer };
-
-            check('conteneur chiffre reconnu', CE.isEscrowEntry(escrowEntry) === true);
-            check('source .lua conservee', CE.isEscrowEntry({ path: 'client/x.lua', bytes: new Uint8Array(Buffer.from('local a = 1\nprint(a)\n')) }) === false);
-            check('bytecode conserve', CE.isEscrowEntry({ path: 'client/y.lua', bytes }) === false);
-            check('asset .ymap non touche', CE.isEscrowEntry({ path: 'stream/a.ymap', bytes: encContainer }) === false);
-
-            const mani = "fx_version 'cerulean'\nclient_scripts {\n  'client/activate_ipl.lua',\n  'client/other.lua'\n}\n";
-            const maniOut = CE.stripManifest(mani, ['client/activate_ipl.lua'], 1);
-            check('manifeste : reference retiree', maniOut.indexOf('activate_ipl.lua') === -1, maniOut);
-            check('manifeste : entree voisine gardee', maniOut.indexOf('client/other.lua') !== -1, maniOut);
-
-            CE.set(true);
-            const zOn = ctx.Zip.create([
-              escrowEntry,
-              { path: 'stream/a.ymap', bytes: encContainer },
-              { path: 'fxmanifest.lua', text: mani }
-            ], { comment: 'test' });
-            check('zip sans escrow : conteneur absent', Buffer.from(zOn).indexOf(Buffer.from('activate_ipl.lua')) === -1);
-            check('zip sans escrow : asset present', Buffer.from(zOn).indexOf(Buffer.from('stream/a.ymap')) !== -1);
-            check('zip sans escrow : rapport present', Buffer.from(zOn).indexOf(Buffer.from('ESCROW-RETIRE.txt')) !== -1);
-
-            CE.set(false);
-            const zOff = ctx.Zip.create([escrowEntry], { comment: 'test' });
-            check('option desactivee : conteneur garde', Buffer.from(zOff).indexOf(Buffer.from('activate_ipl.lua')) !== -1);
-
-            const app = fs.readFileSync('js/app.js', 'utf8');
-            const calls = (app.match(/Lua54\.parse\(/g) || []).length;
-            console.log('appels Lua54.parse( dans app.js : ' + calls);
-
-            console.log(fails ? fails + ' test(s) en echec' : 'tous les tests passent');
-            process.exit(fails ? 1 : 0);
-          })();
-          JS
-          node /tmp/t.cjs
+        run: node tests/verify-decrypt.cjs

@@ -17,7 +17,7 @@
 
    Tout est rejoue au DOMContentLoaded, pour ne pas dependre de l'ordre des
    balises script : Recover et Zip n'existent pas encore quand ce fichier est
-   evalue si la balise est posee avant eux. */
+   evalue si sa balise est posee avant eux. */
 (function (root) {
   'use strict';
 
@@ -221,8 +221,12 @@
   }
 
   /* Retire d'un fxmanifest les references aux fichiers supprimes, sans casser
-     la syntaxe : une entree seule sur sa ligne est commentee, une entree dans
-     une table est simplement effacee. */
+     la syntaxe. Trois cas :
+       - l'entree est dans une table sur une ligne partagee : on l'efface ;
+       - l'entree occupait seule sa ligne : la ligne devient vide (une virgule
+         orpheline entre { et } serait une erreur de syntaxe Lua) ;
+       - la ligne etait une directive a une seule entree (client_script 'x') :
+         on commente la ligne entiere. */
   function stripManifest(text, names, total) {
     if (typeof text !== 'string') return text;
 
@@ -248,11 +252,15 @@
       if (!touched) return line;
 
       cleaned = cleaned.replace(/,\s*,/g, ',').replace(/\{\s*,/g, '{').replace(/,\s*\}/g, ' }');
-      if (!/['"]/.test(cleaned) && /(script|files?)\b/i.test(cleaned)) {
+      if (/['"]/.test(cleaned)) return cleaned.replace(/[ \t]+$/, '');
+      if (/(script|files?)\b/i.test(cleaned)) {
         return '-- retire par CypherDecrypter (fichier escrow supprime) : ' + line.trim();
       }
-      return cleaned.replace(/[ \t]+$/, '');
+      return '';
     }).join('\n');
+
+    // Filet de securite : plus aucune table ne doit commencer par une virgule.
+    out = out.replace(/\{[ \t]*,[ \t]*/g, '{').replace(/\n[ \t]*,[ \t]*\n/g, '\n');
 
     var count = total || removed;
     return '-- [CypherDecrypter] ' + count + ' fichier(s) escrow retire(s) : ' +
