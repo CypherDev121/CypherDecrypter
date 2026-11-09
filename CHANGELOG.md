@@ -5,6 +5,12 @@ Format [SemVer](https://semver.org/lang/fr/).
 
 La version affichee sur le site est **injectee depuis le fichier `VERSION`** par le workflow de synchronisation : il suffit de modifier `VERSION` (et ce changelog) pour que le badge suive au prochain passage.
 
+## [6.1.1] - 2026-11-09
+
+### Corrige
+
+- Regression de la 6.1.0 : option d'export laissee decochee, l'archive etait ecrite a partir de la liste filtree, donc les conteneurs escrow disparaissaient alors que l'option etait desactivee. L'archive est maintenant ecrite a partir de la liste d'origine, conteneurs compris, avec la note `ESCROW-INFO.txt` en plus. Le test `option desactivee : conteneur garde` couvre ce cas.
+
 ## [6.1.0] - 2026-11-09
 
 ### Ajoute

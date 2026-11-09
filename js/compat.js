@@ -14,7 +14,7 @@
       remplissage PKCS#7 de chaque bloc, ce qui detruit le clair (et leve une
       erreur des que le remplissage est invalide, donc presque toujours).
    3. Option d'export : produire une archive sans aucun conteneur escrow.
-      L'export est intercepte au niveau de Zip.create, qui est le seul point de
+      L'export est intercepte au niveau de Zip.create, le seul point de
       passage : les autres onglets n'exportent que du texte, la presence d'un
       .lua non lisible signe donc l'export FXAP.
 
@@ -359,9 +359,10 @@
           }
           if (!dropped.length) return originalCreate.apply(Z, arguments);
 
-          // Option desactivee : on garde tout et on explique dans l'archive.
+          /* Option desactivee : la liste d'origine est ecrite telle quelle (les
+             conteneurs sont conserves) et une note explique la situation. */
           if (!OPT.removeEscrow) {
-            return originalCreate.call(Z, kept.concat([
+            return originalCreate.call(Z, files.concat([
               { path: 'ESCROW-INFO.txt', text: escrowInfo(dropped) }
             ]), opts);
           }
