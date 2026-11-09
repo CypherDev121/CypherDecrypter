@@ -1,7 +1,46 @@
 Site source : https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page/
 
-Arborescence synchronisee (octets, chemin) :
-    3344  .github/workflows/sync-site.yml
+Balises script :
+<script src="js/lua54.js">
+<script src="js/decompile.js">
+<script src="js/fxap.js">
+<script src="js/deobf.js">
+<script src="js/recover.js">
+<script src="js/zip.js">
+<script src="js/anti.js">
+<script src="js/nui.js">
+<script src="js/sanitize.js">
+<script src="js/accounts.js">
+<script src="js/records.js">
+<script src="js/island.js">
+<script src="js/app.js">
+
+Balises link :
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' fill='%23ff7f50' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E" />
+
+Verification des references :
+reference ok : assets/brand/freebuff.svg
+reference ok : assets/brand/github.svg
+reference ok : assets/brand/google.svg
+reference ok : assets/brand/microsoft.svg
+reference ok : css/styles.css
+reference ok : js/accounts.js
+reference ok : js/anti.js
+reference ok : js/app.js
+reference ok : js/decompile.js
+reference ok : js/deobf.js
+reference ok : js/fxap.js
+reference ok : js/island.js
+reference ok : js/lua54.js
+reference ok : js/nui.js
+reference ok : js/records.js
+reference ok : js/recover.js
+reference ok : js/sanitize.js
+reference ok : js/zip.js
+
+Arborescence finale (octets, chemin) :
+    3800  .github/workflows/sync-site.yml
      257  .gitignore
     2461  README.md
      382  assets/brand/freebuff.svg
