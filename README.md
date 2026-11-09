@@ -1,40 +1,47 @@
 # CypherDecrypter
 
-Depot **prive** de sauvegarde et de reprise du projet **CypherDecrypter** (site de dechiffrement).
+Boite a outils Lua 5.4 pour FiveM : decompilation de bytecode, nettoyage FXAP, audit et nettoyage de NUI/Lua, recuperation de sources obfusquees, classement local.
 
-Le code d'origine se trouvait sur le PC local, dans `C:\Users\CypherDev\Documents\CypherDecrypter`. Ce PC a ete reinitialise : le dossier est perdu tel quel. Ce depot sert de point de reprise et doit contenir la version reconstituee du projet, puis historiser toutes les evolutions.
+**Sources recuperees le 9 novembre 2026** depuis le site publie, apres la perte du dossier local d'origine. Le site servait ses fichiers source non minifies : le contenu recupere est le code d'origine, commentaires inclus, pas un bundle reconstitue.
 
-> Le depot est prive. Un depot prive n'est pas open source : si l'objectif est de publier le projet, il faudra passer la visibilite en public (Settings > General > Danger Zone > Change visibility).
+## Contenu
 
-## Statut de la recuperation
+| Fichier | Role |
+| --- | --- |
+| `index.html` | Structure de l'interface (onglets Bytecode, FXAP, Classement, Source, Recuperation, AntiBackdoor, AntiCleanLUA, AntiCleanNUI, AntiCleanBackdoor) |
+| `styles.css` | Styles complets |
+| `app.js` | Cablage de l'interface, traitements par lot, exports |
+| `lua54.js` | Lecture du bytecode Lua 5.4 (en-tete, constantes, prototypes) |
+| `decompile.js` | Desassemblage et reconstruction du source Lua |
+| `recover.js` | Extraction de chunks, AES-CBC/CTR/ECB avec cle, nettoyage des conteneurs FXAP |
+| `fxap.js` | Analyse des conteneurs FXAP (entropie, verdict, chaines) |
+| `nui.js` | Audit NUI (eval, scripts distants, iframes, cookies, @import) |
+| `anti.js` | Audit backdoor Lua et nettoyage (renommage `L_xx`, lignes mortes) |
+| `sanitize.js` | Neutralisation des motifs dangereux en commentaire |
+| `deobf.js` | Desobfuscation de source Lua |
+| `records.js` | Classement local des sessions |
+| `accounts.js` | Comptes locaux (PBKDF2-SHA256, code de recuperation `CD-XXXX-XXXX-XXXX`) |
+| `zip.js` | Ecriture des archives ZIP |
+| `island.js` | Element isole de l'interface |
+| `brand/*.svg` | Logos affiches dans l'ecran de connexion |
 
-- [ ] Identifier ce qui a survecu (OneDrive, hebergeur, archive locale)
-- [ ] Reconstituer l'arborescence du projet
-- [ ] Reintegrer les fonctions de dechiffrement
-- [ ] Verifier que le site fonctionne a nouveau en local
-- [ ] Deployer
+Total : environ 350 Ko de source.
 
-## Pistes de recuperation
+## Lancer en local
 
-1. **OneDrive** : `Documents` est souvent synchronise. Verifier la corbeille OneDrive et l'historique des versions du dossier sur onedrive.live.com.
-2. **Hebergeur** (Vercel, Netlify, Cloudflare Pages, VPS) : le compte survit a la reinitialisation du PC. Les deploiements restent accessibles et peuvent etre telecharges (code minifie, mais exploitable en partie).
-3. **Wayback Machine** : si le site etait en ligne, les bundles JS archives permettent parfois de recuperer des fichiers perdus.
-4. **Sauvegardes disque** : `Windows.old`, disque externe, File History, Dropbox/Google Drive.
-
-Attention : un site deploye sert du JavaScript minifie. Les noms de fonctions et de variables d'origine ne s'y trouvent pas, sauf si des fichiers `.map` (source maps) sont restes accessibles.
-
-## Structure cible
-
-```
-CypherDecrypter/
-  README.md
-  .gitignore
-  (a completer avec l'arborescence reconstituee)
-```
-
-## Mise en place locale
+Aucune dependance, aucun build : c'est du HTML/CSS/JS statique.
 
 ```bash
-git clone https://github.com/CypherDev121/CypherDecrypter.git
-cd CypherDecrypter
+python -m http.server 8080
 ```
+
+Puis ouvrir http://localhost:8080 .
+
+## Recuperation
+
+Les fichiers ont ete telecharges par `.github/workflows/recover-sources.yml`, qui suit les balises `src` et `href` de `index.html` puis complete avec les modules connus. Relancer ce workflow resynchronise le depot avec la version publiee tant qu'elle est en ligne.
+
+## Notes
+
+- Tout s'execute dans le navigateur : aucun fichier n'est envoye a un serveur.
+- Depot prive. Un depot prive n'est pas open source : si le projet doit etre publie, il faudra changer sa visibilite (Settings > General > Danger Zone).
