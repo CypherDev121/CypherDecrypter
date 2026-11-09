@@ -1,0 +1,50 @@
+name: deploy-pages
+
+# Publie le site sur GitHub Pages a chaque push sur main :
+# https://cypherdev121.github.io/CypherDecrypter/
+# Aucun build : les fichiers sont deja statiques (index.html, js/, css/, assets/).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Activer Pages si necessaire
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Preparer le site
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r js css assets _site/
+          echo "--- contenu publie ---"
+          find _site -type f | sort
+          grep -o 'data-site-version="[^"]*"' _site/index.html || echo "pas de badge de version"
+
+      - name: Empaqueter
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deployer
+        id: deployment
+        uses: actions/deploy-pages@v4
