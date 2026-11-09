@@ -4,7 +4,9 @@
 
 Boite a outils Lua 5.4 pour FiveM : decompilation de bytecode, nettoyage FXAP, audit et nettoyage de NUI/Lua, recuperation de sources obfusquees, classement local.
 
-**Sources recuperees le 9 novembre 2026** depuis le site publie, apres la perte du dossier local d'origine. Le site servait ses fichiers non minifies : c'est le code d'origine, commentaires inclus.
+**Site public : https://cypherdev121.github.io/CypherDecrypter/**
+
+Sources recuperees le 9 novembre 2026 depuis le site publie, apres la perte du dossier local d'origine. Le site servait ses fichiers non minifies : c'est le code d'origine, commentaires inclus.
 
 ## Arborescence
 
@@ -32,37 +34,40 @@ CypherDecrypter/
 ├── assets/
 │   └── brand/            logos de l'ecran de connexion
 ├── .github/workflows/
+│   ├── pages.yml         publication sur GitHub Pages
 │   └── sync-site.yml     synchronisation + version + release
 ├── SYNC.txt              manifeste : source, version, references, tailles
 └── README.md
 ```
 
+## Site en ligne
+
+Le depot est **public** et publie automatiquement sur GitHub Pages a chaque push sur `main` :
+
+**https://cypherdev121.github.io/CypherDecrypter/**
+
+`.github/workflows/pages.yml` copie `index.html`, `js/`, `css/` et `assets/` dans un artefact, puis le deploie. Aucun build : les fichiers sont deja statiques, donc les chemins relatifs du HTML fonctionnent tels quels.
+
+Consequence : une modification de `VERSION` poussee sur `main` suffit a mettre a jour la pastille du site public. Il n'y a plus de publication manuelle a faire.
+
 ## Version
 
-Le fichier `VERSION` est la seule source de verite. Le workflow lit sa valeur, l'ecrit dans le badge de l'en-tete, puis commite et publie une release `vX.Y.Z` si elle n'existe pas.
+Le fichier `VERSION` est la seule source de verite. Le workflow de synchronisation lit sa valeur, l'ecrit dans le badge de l'en-tete, puis commite et publie une release `vX.Y.Z` si elle n'existe pas.
 
 Pour publier une nouvelle version :
 
 1. modifier `VERSION` (`6.0.1`, `6.1.0`, `7.0.0` selon l'ampleur) ;
 2. ajouter l'entree correspondante dans `CHANGELOG.md` ;
-3. pousser — badge, commit et release suivent automatiquement.
+3. pousser — badge, commit, release et site public suivent automatiquement.
 
-## Publication du site
+## Source Freebuff (synchronisation)
 
-Le site public est heberge par **Freebuff** (projet « CypherDecrypter — Lua 5.4 ») sur
-`https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page/`.
+`sync-site.yml` aspire encore la version hebergee par Freebuff sur
+`https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page/` pour la conserver dans ce depot.
 
-La publication se declenche depuis l'application Freebuff : le depot GitHub ne peut pas la lancer.
-Pour que la version soit visible par les visiteurs, la page publiee doit contenir cette pastille,
-juste apres `<span class="badge badge-azure">Lua 5.4</span>` dans l'en-tete :
+Le workflow gere les deux cas du badge de version : si la page aspiree porte deja `data-site-version`, il **remplace son numero** depuis `VERSION` ; sinon il insere la pastille apres `<span class="badge badge-azure">Lua 5.4</span>`.
 
-```html
-<span class="badge badge-azure" data-site-version="v6.0.0" title="Version du site">v6.0.0</span>
-```
-
-Le workflow gere les deux cas : si la page publiee porte deja la pastille, il **met a jour son
-numero** depuis `VERSION` ; sinon il l'insere. Une montee de version se propage donc meme si le
-HTML publie contient deja un numero.
+Si le projet Freebuff n'est plus mis a jour, cette synchronisation reste sans effet sur le site public : GitHub Pages publie le contenu du depot.
 
 ## Lancer en local
 
@@ -77,4 +82,4 @@ Puis ouvrir http://localhost:8080 .
 ## Notes
 
 - Tout s'execute dans le navigateur : aucun fichier n'est envoye a un serveur.
-- Depot prive. Un depot prive n'est pas open source : si le projet doit etre publie, il faut changer sa visibilite (Settings > General > Danger Zone).
+- Le depot est public : le code des modules est donc lisible et forkable par tout le monde.
