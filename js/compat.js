@@ -7,13 +7,13 @@
    dans index.html au moment du deploiement Pages.
 
    1. Lua54.parse n'existe pas dans l'API (seul parseChunk est exporte).
-      app.js l'appelle pourtant a trois endroits : un .lua compile, ou un
-      bytecode compresse dans un conteneur, levait une TypeError avalee par
-      un catch vide, et le fichier ressortait "non dechiffre".
-   2. AES-ECB etait implemente bloc par bloc via AES-CBC : WebCrypto retire
-      le remplissage PKCS#7 de chaque bloc, ce qui detruit le clair. On
-      dechiffre donc en CBC sur le tampon entier, plus un bloc jetable, puis
-      on annule le chainage CBC pour retrouver les blocs ECB. */
+      app.js l'appelle deux fois : un .lua compile, ou un bytecode compresse
+      dans un conteneur, levait une TypeError avalee par un catch vide, et le
+      fichier ressortait "non dechiffre".
+   2. AES-ECB etait implemente bloc par bloc via AES-CBC : WebCrypto retire le
+      remplissage PKCS#7 de chaque bloc, ce qui detruit le clair (et leve une
+      erreur des que le remplissage est invalide, donc presque toujours).
+      Voir ecbPlain() pour la reconstruction correcte. */
 (function (root) {
   'use strict';
 
@@ -47,7 +47,16 @@
       return b[i] === 0x1b && b[i + 1] === 0x4c && b[i + 2] === 0x75 && b[i + 3] === 0x61;
     }
 
-    /* Retourne le clair ECB (sans de-remplissage) ou null. */
+    /* Clair ECB complet, ou null.
+
+       WebCrypto n'expose pas AES-ECB. On passe donc par AES-CBC avec un IV
+       nul sur tout le tampon : CBC donne P_i = D(C_i) XOR C_(i-1), donc
+       D(C_i) = P_i XOR C_(i-1) redonne exactement le bloc ECB. Le seul
+       obstacle est le remplissage PKCS#7, verifie sur le dernier bloc
+       seulement. On ajoute donc un bloc de queue dont on choisit le clair :
+       il faut que D(X) XOR C_n = 0x10 x 16 (remplissage complet, toujours
+       accepte), soit D(X) = C_n XOR 0x10 x 16, donc X = E(C_n XOR 0x10 x 16).
+       E() s'obtient avec le meme chiffrement en CBC sur ce seul bloc. */
     async function ecbPlain(input, key) {
       var subtle = webcrypto();
       if (!subtle) return null;
@@ -56,37 +65,45 @@
       var body = input.subarray(0, len);
       var zero = new Uint8Array(16);
       var k;
+
       try {
-        k = await subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt']);
+        k = await subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt', 'encrypt']);
       } catch (e) {
         return null;
       }
 
-      /* Un bloc supplementaire fait porter le remplissage sur lui seul :
-         les blocs utiles ne sont jamais tronques. */
-      for (var attempt = 0; attempt < 16; attempt++) {
-        var buf = new Uint8Array(len + 16);
-        buf.set(body, 0);
-        if (attempt) {
-          for (var f = 0; f < 16; f++) buf[len + f] = attempt;
-        }
-        var raw;
-        try {
-          raw = new Uint8Array(await subtle.decrypt({ name: 'AES-CBC', iv: zero }, k, buf));
-        } catch (e) {
-          continue;
-        }
-        if (raw.length < len) continue;
-        var out = new Uint8Array(len);
-        for (var b = 0; b < len; b += 16) {
-          for (var j = 0; j < 16; j++) {
-            var prev = b === 0 ? 0 : body[b - 16 + j];
-            out[b + j] = raw[b + j] ^ prev;
-          }
-        }
-        return out;
+      var last = body.subarray(len - 16);
+      var tailPlain = new Uint8Array(16);
+      for (var t = 0; t < 16; t++) tailPlain[t] = 0x10 ^ last[t];
+
+      var sealed;
+      try {
+        sealed = new Uint8Array(await subtle.encrypt({ name: 'AES-CBC', iv: zero }, k, tailPlain));
+      } catch (e) {
+        return null;
       }
-      return null;
+      if (sealed.length < 16) return null;
+
+      var buf = new Uint8Array(len + 16);
+      buf.set(body, 0);
+      buf.set(sealed.subarray(0, 16), len);
+
+      var raw;
+      try {
+        raw = new Uint8Array(await subtle.decrypt({ name: 'AES-CBC', iv: zero }, k, buf));
+      } catch (e) {
+        return null;
+      }
+      if (raw.length < len) return null;
+
+      var out = new Uint8Array(len);
+      for (var b = 0; b < len; b += 16) {
+        for (var j = 0; j < 16; j++) {
+          var prev = b === 0 ? 0 : body[b - 16 + j];
+          out[b + j] = raw[b + j] ^ prev;
+        }
+      }
+      return out;
     }
 
     R.decrypt = async function (bytes, options) {
