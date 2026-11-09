@@ -1,72 +1,84 @@
-name: recover-published-sources
+name: sync-published-site
 
-# Telecharge les fichiers sources servis par le site publie et les commite
-# dans ce depot prive. Aucune machine locale n'est necessaire.
+# Synchronise l'integralite du site publie (interface + code + assets)
+# dans ce depot prive : HTML, CSS, modules JS, ressources referencees
+# par le HTML et par le CSS (polices, images, svg).
+# Tourne a chaque push, a la demande, et chaque nuit a 04:00 UTC :
+# chaque modification du projet est donc archivee.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"
 
 permissions:
   contents: write
 
 jobs:
-  fetch:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Telecharger les sources publiees
+      - name: Telecharger l'interface et toutes les ressources
         run: |
           set -uo pipefail
           BASE="https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page"
-          curl -fsSL "$BASE/" -o index.html
-          echo "--- index.html ---"
-          wc -c index.html
 
-          grep -oE '(src|href)="[^"]+"' index.html | sed -E 's/^[a-z]+="//; s/"$//' | sort -u > /tmp/assets.txt
-          cat /tmp/assets.txt
-
-          while read -r p; do
-            case "$p" in
-              http*|\#*|data:*|mailto:*|"") continue ;;
-            esac
-            p="${p#./}"
-            p="${p#/}"
-            [ -z "$p" ] && continue
-            mkdir -p "$(dirname "$p")"
-            if curl -fsSL "$BASE/$p" -o "$p"; then
-              echo "ok $p"
+          fetch() {
+            u="$1"; out="$2"
+            mkdir -p "$(dirname "$out")"
+            if curl -fsSL "$BASE/$u" -o "$out.tmp"; then
+              mv "$out.tmp" "$out"
+              echo "ok $out"
             else
-              echo "skip $p"
-              rm -f "$p"
+              rm -f "$out.tmp"
+              echo "absent $out"
             fi
-          done < /tmp/assets.txt
+          }
 
-          # modules connus, meme s'ils ne sont pas references dans le HTML
-          for f in app.js lua54.js fxap.js recover.js deobf.js anti.js zip.js records.js accounts.js style.css admin.js admin.css; do
-            if [ ! -f "$f" ]; then
-              if curl -fsSL "$BASE/$f" -o "$f"; then echo "ok $f"; else echo "absent $f"; rm -f "$f"; fi
-            fi
+          fetch "" index.html
+
+          # 1. ressources referencees par le HTML (css, scripts, images)
+          grep -oE '(src|href)="[^"]+"' index.html | sed -E 's/^[a-z]+="//; s/"$//' | sort -u > /tmp/html-assets.txt
+          cat /tmp/html-assets.txt
+          while read -r p; do
+            case "$p" in http*|\#*|data:*|mailto:*|"") continue ;; esac
+            p="${p#./}"; p="${p#/}"
+            [ -z "$p" ] && continue
+            fetch "$p" "$p"
+          done < /tmp/html-assets.txt
+
+          # 2. ressources referencees par le CSS (polices, images, svg)
+          if [ -f styles.css ]; then
+            grep -oE 'url\([^)]*\)' styles.css | sed -e 's/^url(//' -e 's/)$//' -e "s/^[\"']//" -e "s/[\"']$//" | sort -u > /tmp/css-assets.txt
+            cat /tmp/css-assets.txt
+            while read -r p; do
+              case "$p" in http*|data:*|"") continue ;; esac
+              p="${p#./}"; p="${p#/}"
+              [ -z "$p" ] && continue
+              fetch "$p" "$p"
+            done < /tmp/css-assets.txt
+          fi
+
+          # 3. modules connus, meme s'ils ne sont pas references dans le HTML
+          for f in app.js lua54.js decompile.js recover.js fxap.js deobf.js anti.js nui.js sanitize.js zip.js records.js accounts.js island.js styles.css; do
+            [ -f "$f" ] || fetch "$f" "$f"
           done
 
-          # source maps eventuelles
-          for f in app.js.map style.css.map; do
-            curl -fsSL "$BASE/$f" -o "$f" && echo "ok $f" || rm -f "$f"
-          done
+          echo "--- fichiers presents ---"
+          find . -path ./.git -prune -o -type f -print | sort
+          du -sh --exclude=.git .
 
-          ls -la
-          echo "--- tailles ---"
-          wc -c *.html *.js *.css 2>/dev/null || true
-
-      - name: Commiter les sources recuperees
+      - name: Commiter chaque modification
         run: |
           git config user.name "CypherDev121"
           git config user.email "lykoslegoatdev@gmail.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "Rien a commiter"
+            echo "Aucun changement depuis la derniere synchronisation"
           else
-            git commit -m "chore: recuperation des sources publiees du site [skip ci]"
+            git commit -m "sync: mise a jour du site publie $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
             git push
           fi
