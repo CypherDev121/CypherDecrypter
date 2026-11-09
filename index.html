@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CypherDecrypter — Boîte à outils Lua 5.4 pour FiveM</title>
+<meta name="description" content="Analyse, désassemblage et reconstruction de source depuis le bytecode Lua 5.4 des ressources FiveM. Tout se passe dans le navigateur : aucun fichier n'est envoyé." />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' fill='%23ff7f50' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark">{}</span>
+      <span>CypherDecrypter</span>
+    </a>
+    <span class="badge badge-azure">Lua 5.4</span>
+    <button class="account-btn" id="account-open" type="button" aria-haspopup="dialog">
+      <span class="account-avatar" id="account-avatar" aria-hidden="true">?</span>
+      <span id="account-label">Se connecter</span>
+    </button>
+  </div>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <div class="wrap">
+    <div class="tablist tablist-main" data-tabs="tool" role="tablist" aria-label="Outils">
+      <button class="tab is-active" data-tab="bytecode" role="tab" aria-selected="true">Bytecode</button>
+      <button class="tab" data-tab="backdoor" role="tab" aria-selected="false">AntiBackdoor</button>
+      <button class="tab" data-tab="cleanlua" role="tab" aria-selected="false">AntiCleanLUA</button>
+      <button class="tab" data-tab="cleannui" role="tab" aria-selected="false">AntiCleanNUI &amp; LUA</button>
+      <button class="tab" data-tab="cleanbackdoor" role="tab" aria-selected="false">AntiCleanBackdoor</button>
+      <button class="tab" data-tab="fxap" role="tab" aria-selected="false">Clean FXAP &amp; Mapping</button>
+      <button class="tab" data-tab="recovery" role="tab" aria-selected="false">Récupération</button>
+      <button class="tab" data-tab="source" role="tab" aria-selected="false">Source obfusquée</button>
+      <button class="tab" data-tab="records" role="tab" aria-selected="false">Classement</button>
+    </div>
+  </div>
+</div>
+
+<main id="top">
+
+  <section class="hero wrap">
+    <h1 class="hero-title">
+      <span class="hero-title-main">LUA Decrypter <span class="grad">5.4</span> FiveM</span>
+      <span class="by-cypher">By Cypher</span>
+    </h1>
+  </section>
+
+  <section id="outils" class="wrap">
+
+    <!-- ------------------------------ BYTECODE ------------------------------ -->
+    <div data-panel-group="tool" data-panel="bytecode">
+      <label class="dropzone" id="dz-bytecode">
+        <input type="file" id="file-bytecode" accept=".luac,.lua,.out,.bin,application/octet-stream" hidden />
+        <span class="dz-icon" aria-hidden="true">⇩</span>
+        <span class="dz-title">Déposer un chunk Lua 5.4</span>
+        <span class="dz-hint">un seul chunk à détailler — <code>.luac</code>, <code>.lua</code>, tout binaire commençant par <code>\x1bLua</code>. Pour un dossier ou une archive, utilisez l’onglet Récupération.</span>
+      </label>
+
+      <div id="bytecode-result" hidden>
+        <div class="result-head">
+          <div>
+            <p class="file-name" id="bc-name">—</p>
+            <p class="file-sub" id="bc-sub">—</p>
+          </div>
+          <div class="result-actions">
+            <button class="btn btn-ghost" id="bc-copy" type="button">Copier la source</button>
+            <button class="btn btn-primary" id="bc-download" type="button">Télécharger .lua</button>
+          </div>
+        </div>
+
+        <dl class="stats" id="bc-stats"></dl>
+        <ul class="notes" id="bc-notes"></ul>
+
+        <div class="tablist" data-tabs="bc" role="tablist" aria-label="Vues du résultat">
+          <button class="tab is-active" data-tab="source" role="tab" aria-selected="true">Source reconstruite</button>
+          <button class="tab" data-tab="disasm" role="tab" aria-selected="false">Désassemblage</button>
+          <button class="tab" data-tab="consts" role="tab" aria-selected="false">Constantes</button>
+        </div>
+
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="tl tl-r"></span><span class="tl tl-y"></span><span class="tl tl-g"></span>
+            <span class="terminal-title" id="bc-term-title">decompiled.lua</span>
+          </div>
+          <div data-panel-group="bc" data-panel="source">
+            <pre class="code" id="bc-source" tabindex="0"></pre>
+          </div>
+          <div data-panel-group="bc" data-panel="disasm" hidden>
+            <pre class="code" id="bc-disasm" tabindex="0"></pre>
+          </div>
+          <div data-panel-group="bc" data-panel="consts" hidden>
+            <div class="table-scroll"><table class="consts" id="bc-consts"></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- -------------------------------- FXAP -------------------------------- -->
+    <div data-panel-group="tool" data-panel="fxap" hidden>
+      <div class="dropzone" id="dz-fxap">
+        <input type="file" id="file-fxap" multiple accept=".lua,.luac,.fxap,.bin,.zip,application/octet-stream" hidden />
+        <input type="file" id="dir-fxap" webkitdirectory directory multiple hidden />
+        <input type="file" id="file-escrow" multiple accept=".lua,.luac,.fxap,.bin,.zip,application/octet-stream" hidden />
+        <input type="file" id="dir-escrow" webkitdirectory directory multiple hidden />
+        <span class="dz-icon" aria-hidden="true">⇩</span>
+        <span class="dz-title">Nettoyer un FXAP, un mapping ou un dossier complet</span>
+        <span class="dz-hint">seuls les fichiers réellement chiffrés par FXAP sont déchiffrés ; l’en-tête est retiré, le mapping, le stream et les fichiers déjà en clair sont recopiés à l’identique — un avertissement vous dit ce qui l’était déjà</span>
+        <span class="dz-actions">
+          <label class="btn btn-ghost" for="file-fxap">Choisir un Fichier</label>
+          <label class="btn btn-ghost" for="dir-fxap">Choisir un Dossier</label>
+          <span class="escrow-wrap">
+            <button class="btn btn-ghost btn-escrow" type="button" id="escrow-btn" aria-haspopup="true" aria-expanded="false" aria-controls="escrow-menu">Vérification Escrow</button>
+            <span class="escrow-menu" id="escrow-menu" hidden role="menu" aria-label="Vérification Escrow">
+              <button type="button" class="escrow-choice" role="menuitem" data-escrow-mode="file">Choisir un Fichier</button>
+              <button type="button" class="escrow-choice" role="menuitem" data-escrow-mode="dir">Choisir un Dossier</button>
+            </span>
+          </span>
+        </span>
+        <span class="dz-escrow-hint">vérifie sans rien modifier : aucun déchiffrement, aucun export</span>
+      </div>
+      <p class="file-sub" id="fxap-progress" hidden></p>
+      <form class="keyform" id="keyform">
+        <p class="file-sub keyform-title">Déchiffrement avec votre clé — pour une ressource qui vous appartient. La clé reste dans le navigateur et n'est jamais transmise.</p>
+        <div class="keyrow">
+          <input id="key-input" type="password" autocomplete="off" spellcheck="false" placeholder="Clé AES — hex ou base64 (16, 24 ou 32 octets)" />
+          <select id="key-mode" aria-label="Mode de chiffrement">
+            <option value="CBC">AES-CBC</option>
+            <option value="CTR">AES-CTR</option>
+            <option value="ECB">AES-ECB</option>
+          </select>
+          <input id="iv-input" type="text" autocomplete="off" spellcheck="false" placeholder="IV optionnel (16 octets)" />
+          <button class="btn btn-primary" type="submit">Déchiffrer</button>
+        </div>
+      </form>
+      <div id="key-result" hidden></div>
+      <div id="fxap-result" hidden></div>
+      <div id="escrow-result" hidden></div>
+    </div>
+
+    <!-- ----------------------------- CLASSEMENT ----------------------------- -->
+    <div data-panel-group="tool" data-panel="records" hidden>
+      <div class="board glass" id="records-board">
+        <span class="board-orb board-orb-a" aria-hidden="true"></span>
+        <span class="board-orb board-orb-b" aria-hidden="true"></span>
+
+        <header class="board-head">
+          <div class="board-intro">
+            <p class="kicker">Classement local</p>
+            <h2 class="board-title">Vos décryptages, classés</h2>
+            <p class="board-sub">Chaque lot analysé laisse une trace dans ce navigateur uniquement : aucun compte, aucun envoi, aucune synchronisation.</p>
+          </div>
+          <div class="board-score">
+            <span class="board-score-value" id="rec-total">0</span>
+            <span class="board-score-label">points cumulés</span>
+          </div>
+        </header>
+
+        <div class="board-stats">
+          <div class="board-stat"><span class="board-stat-value" id="rec-runs">0</span><span class="board-stat-label">sessions</span></div>
+          <div class="board-stat"><span class="board-stat-value" id="rec-sources">0</span><span class="board-stat-label">sources récupérées</span></div>
+          <div class="board-stat"><span class="board-stat-value" id="rec-encrypted">0</span><span class="board-stat-label">conteneurs FXAP</span></div>
+          <div class="board-stat"><span class="board-stat-value" id="rec-assets">0</span><span class="board-stat-label">assets recopiés</span></div>
+        </div>
+
+        <section class="board-block">
+          <h3 class="board-block-title">Podium</h3>
+          <div class="board-podium" id="rec-podium"></div>
+        </section>
+
+        <section class="board-block">
+          <h3 class="board-block-title">Dernières sessions</h3>
+          <div class="board-recent" id="rec-recent"></div>
+        </section>
+
+        <footer class="board-foot">
+          <p class="board-note">Barème : 120 pts par source récupérée, 90 par conteneur FXAP traité, 40 par correction (renommage, ligne retirée, constat), 15 par asset recopié, 10 par fichier analysé.</p>
+          <button class="btn btn-ghost" id="rec-clear" type="button">Vider le classement</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ------------------------------- SOURCE ------------------------------- -->
+    <div data-panel-group="tool" data-panel="source" hidden>
+      <div class="grid-2">
+        <div class="field">
+          <div class="field-head">
+            <label for="src-input">Code Lua obfusqué</label>
+            <label class="btn btn-ghost btn-file">Charger un fichier
+              <input type="file" id="file-source" accept=".lua,.txt,text/plain" hidden />
+            </label>
+          </div>
+          <textarea id="src-input" spellcheck="false" placeholder="Collez ici du code Lua obfusqué (string.char, base64, xor, load(...))"></textarea>
+        </div>
+        <div class="field">
+          <div class="field-head">
+            <label>Résultat</label>
+            <div class="field-actions">
+              <button class="btn btn-ghost" id="src-run" type="button">Désobfusquer</button>
+              <button class="btn btn-ghost" id="src-copy" type="button" disabled>Copier</button>
+            </div>
+          </div>
+          <pre class="code code-box" id="src-output" tabindex="0">—</pre>
+        </div>
+      </div>
+      <ol class="passes" id="src-log"></ol>
+    </div>
+
+    <div data-panel-group="tool" data-panel="recovery" hidden>
+      <div class="dropzone" id="dz-recovery">
+        <input type="file" id="file-recovery" multiple accept=".lua,.luac,.fxap,.zip,.bin,.txt,application/octet-stream" hidden />
+        <input type="file" id="dir-recovery" webkitdirectory directory multiple hidden />
+        <span class="dz-icon" aria-hidden="true">⇩</span>
+        <span class="dz-title">Glisser un dossier, une archive .zip, ou plusieurs fichiers</span>
+        <span class="dz-hint">chaque fichier trouvé est analysé, récursivement dans les sous-dossiers et dans les archives : préfixe parasite, xor mono-octet, base64, hexadécimal, octets inversés, en-tête altéré, chunks multiples</span>
+        <span class="dz-actions">
+          <label class="btn btn-ghost" for="file-recovery">Choisir des fichiers</label>
+          <label class="btn btn-ghost" for="dir-recovery">Choisir un dossier</label>
+        </span>
+      </div>
+      <p class="file-sub" id="recovery-progress" hidden></p>
+      <div id="recovery-result" hidden></div>
+    </div>
+
+    <!-- --------------------------- ANTI-BACKDOOR --------------------------- -->
+    <div data-panel-group="tool" data-panel="backdoor" hidden>
+      <div class="dropzone" id="dz-backdoor">
+        <input type="file" id="file-backdoor" multiple accept=".lua,.js,.mjs,.html,.htm,.css,.json,.cfg,.txt,.zip" hidden />
+        <input type="file" id="dir-backdoor" webkitdirectory directory multiple hidden />
+        <span class="dz-icon" aria-hidden="true">⇩</span>
+        <span class="dz-title">Glisser un fichier, un dossier ou une archive .zip</span>
+        <span class="dz-hint">audit statique, sans exécution : <code>os.execute</code>, HTTP sortant, <code>load(string.char)</code>, hooks debug, exfiltration d’identifiants, boucles bloquantes, artefacts d’obfuscateur <code>L_01</code> / <code>L_1_</code></span>
+        <span class="dz-actions">
+          <label class="btn btn-ghost" for="file-backdoor">Choisir un fichier</label>
+          <label class="btn btn-ghost" for="dir-backdoor">Choisir un dossier</label>
+        </span>
+      </div>
+      <p class="file-sub" id="backdoor-progress" hidden></p>
+      <div id="backdoor-result" hidden></div>
+    </div>
+
+    <!-- ---------------------------- CLEAN LUA ---------------------------- -->
+    <div data-panel-group="tool" data-panel="cleanlua" hidden>
+      <div class="dropzone" id="dz-cleanlua">
+        <input type="file" id="file-cleanlua" multiple accept=".lua,.txt,text/plain,.zip" hidden />
+        <input type="file" id="dir-cleanlua" webkitdirectory directory multiple hidden />
+        <span class="dz-icon" aria-hidden="true">⇩</span>
+        <span class="dz-title">Glisser un Fichier Lua</span>
+        <span class="dz-hint">renomme les <code>L_1_</code>/<code>L_01</code> en v1, v2…, supprime les lignes sans effet, fusionne les littéraux concaténés, réindente à 2 espaces — le code n’est jamais exécuté</span>
+        <span class="dz-actions">
+          <label class="btn btn-ghost" for="file-cleanlua">Choisir un Fichier</label>
+          <label class="btn btn-ghost" for="dir-cleanlua">Choisir un Dossier</label>
+        </span>
+      </div>
+      <p class="file-sub" id="cleanlua-progress" hidden></p>
+      <div id="cleanlua-result" hidden></div>
+    </div>
+
+    <!-- ---------------------------- CLEAN NUI ---------------------------- -->
+    <div data-panel-group="tool" data-panel="cleannui" hidden>
+      <div class="dropzone" id="dz-cleannui">
+        <input type="file" id="file-cleannui" multiple accept=".html,.htm,.css,.js,.mjs,.lua,.txt,.zip,text/*" hidden />
+        <input type="file" id="dir-cleannui" webkitdirectory directory multiple hidden />
+        <span class="dz-icon" aria-hidden="true">⇩</span>
+        <span class="dz-title">Déposer des Fichiers NUI ou Lua : HTML, CSS, JS, LUA</span>
+        <span class="dz-hint">les fichiers NUI passent par l’audit <code>eval</code>, scripts distants, iframes, cookies, <code>@import</code> ; les scripts <code>.lua</code> par l’audit et le nettoyage Lua (variables <code>L_xx</code>, lignes mortes) — fichier par fichier, sans rien exécuter</span>
+        <span class="dz-actions">
+          <label class="btn btn-ghost" for="file-cleannui">Choisir un Fichier</label>
+          <label class="btn btn-ghost" for="dir-cleannui">Choisir un Dossier</label>
+        </span>
+      </div>
+      <p class="file-sub" id="cleannui-progress" hidden></p>
+      <div id="cleannui-result" hidden></div>
+    </div>
+
+    <!-- ------------------------ DÉPOUILLAGE TOUT-EN-UN ------------------------ -->
+    <div data-panel-group="tool" data-panel="cleanbackdoor" hidden>
+      <div class="dropzone" id="dz-sanitize">
+        <input type="file" id="file-sanitize" multiple accept=".lua,.js,.mjs,.html,.htm,.css,.json,.cfg,.txt,.ts,.tsx,.jsx,.xml,.svg,.zip,text/*" hidden />
+        <input type="file" id="dir-sanitize" webkitdirectory directory multiple hidden />
+        <input type="file" id="file-bdcheck" multiple accept=".lua,.js,.mjs,.html,.htm,.css,.json,.cfg,.txt,.ts,.tsx,.jsx,.xml,.svg,.zip,text/*" hidden />
+        <input type="file" id="dir-bdcheck" webkitdirectory directory multiple hidden />
+        <span class="dz-icon" aria-hidden="true">⇩</span>
+        <span class="dz-title">Glisser des fichiers, un dossier ou une archive .zip</span>
+        <span class="dz-hint">le langage de chaque fichier est détecté tout seul (Lua, HTML, CSS, JS, texte) : les motifs dangereux connus sont neutralisés en commentaire — jamais effacés — puis le code est nettoyé, réindenté et re-contrôlé</span>
+        <span class="dz-actions">
+          <label class="btn btn-ghost" for="file-sanitize">Choisir des fichiers</label>
+          <label class="btn btn-ghost" for="dir-sanitize">Choisir un dossier</label>
+          <span class="escrow-wrap">
+            <button class="btn btn-ghost btn-escrow" type="button" id="bdcheck-btn" aria-haspopup="true" aria-expanded="false" aria-controls="bdcheck-menu">Vérification Backdoor</button>
+            <span class="escrow-menu" id="bdcheck-menu" hidden role="menu" aria-label="Vérification Backdoor">
+              <button type="button" class="escrow-choice" role="menuitem" data-bdcheck-mode="file">Choisir un Fichier</button>
+              <button type="button" class="escrow-choice" role="menuitem" data-bdcheck-mode="dir">Choisir un Dossier</button>
+            </span>
+          </span>
+        </span>
+        <span class="dz-escrow-hint">vérifie sans rien modifier : aucun fichier n’est nettoyé ni exporté</span>
+      </div>
+      <p class="file-sub" id="sanitize-progress" hidden></p>
+      <p class="file-sub" id="bdcheck-progress" hidden></p>
+      <div id="sanitize-result" hidden></div>
+      <div id="bdcheck-result" hidden></div>
+    </div>
+  </section>
+
+  
+  
+</main>
+
+
+<script src="lua54.js"></script>
+<script src="decompile.js"></script>
+<script src="fxap.js"></script>
+<script src="deobf.js"></script>
+<script src="recover.js"></script>
+<script src="zip.js"></script>
+<script src="anti.js"></script>
+<script src="nui.js"></script>
+<script src="sanitize.js"></script>
+<div class="auth-overlay" id="auth-overlay" hidden>
+  <div class="auth-card glass" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <button class="auth-close" id="auth-close" type="button" aria-label="Fermer">×</button>
+
+    <header class="auth-head">
+      <span class="auth-logo" aria-hidden="true">C</span>
+      <div>
+        <h2 id="auth-title">Espace CypherDecrypter</h2>
+        <p class="auth-sub">Compte local à ce navigateur : mot de passe haché en PBKDF2-SHA256, rien n’est transmis.</p>
+      </div>
+    </header>
+
+    <nav class="auth-tabs" id="auth-tabs" aria-label="Mode de connexion">
+      <button class="auth-tab is-active" type="button" data-go="login" aria-pressed="true">Connexion</button>
+      <button class="auth-tab" type="button" data-go="signup" aria-pressed="false">Créer un compte</button>
+    </nav>
+
+    <div class="auth-providers" id="auth-providers">
+      <p class="auth-providers-label">Fournisseurs</p>
+      <div class="auth-provider-grid">
+        <button class="provider" type="button" data-provider="Freebuff"><img class="provider-mark" src="brand/freebuff.svg" alt="" width="20" height="20" />Freebuff</button>
+        <button class="provider" type="button" data-provider="Google"><img class="provider-mark" src="brand/google.svg" alt="" width="20" height="20" />Google</button>
+        <button class="provider" type="button" data-provider="GitHub"><img class="provider-mark" src="brand/github.svg" alt="" width="20" height="20" />GitHub</button>
+        <button class="provider" type="button" data-provider="Microsoft" disabled title="Freebuff ne fédère que Google, GitHub et Apple"><img class="provider-mark" src="brand/microsoft.svg" alt="" width="20" height="20" />Microsoft</button>
+      </div>
+      <p class="auth-note">Connexion réelle par Freebuff, qui fédère Google, GitHub et Apple. Microsoft n’est pas proposé par Freebuff.</p>
+    </div>
+
+    <div class="auth-sep" id="auth-sep"><span>ou par e-mail</span></div>
+
+    <form class="auth-form" id="auth-login" data-view="login">
+      <label>Adresse e-mail<input id="login-email" type="email" autocomplete="username" required /></label>
+      <label>Mot de passe<input id="login-password" type="password" autocomplete="current-password" required /></label>
+      <button class="btn btn-primary" type="submit">Se connecter</button>
+      <p class="auth-links"><button class="linkbtn" type="button" data-go="recover">Mot de passe oublié ?</button></p>
+    </form>
+
+    <form class="auth-form" id="auth-signup" data-view="signup" hidden>
+      <label>Nom affiché (optionnel)<input id="signup-name" type="text" autocomplete="nickname" maxlength="40" /></label>
+      <label>Adresse e-mail<input id="signup-email" type="email" autocomplete="username" required /></label>
+      <label>Mot de passe (10 caractères minimum)<input id="signup-password" type="password" autocomplete="new-password" required /></label>
+      <button class="btn btn-primary" type="submit">Créer mon compte</button>
+      <p class="auth-links"><button class="linkbtn" type="button" data-go="recover">J’ai déjà un code de récupération ?</button></p>
+    </form>
+
+    <form class="auth-form" id="auth-recover" data-view="recover" hidden>
+      <p class="auth-hint">Sans serveur ni e-mail, la réinitialisation passe par le code de récupération affiché à l’inscription (format <code>CD-XXXX-XXXX-XXXX</code>).</p>
+      <label>Adresse e-mail<input id="recover-email" type="email" autocomplete="username" required /></label>
+      <label>Code de récupération<input id="recover-code" type="text" autocomplete="one-time-code" placeholder="CD-XXXX-XXXX-XXXX" required /></label>
+      <label>Nouveau mot de passe<input id="recover-password" type="password" autocomplete="new-password" required /></label>
+      <button class="btn btn-primary" type="submit">Réinitialiser</button>
+      <p class="auth-links"><button class="linkbtn" type="button" data-go="login">Retour à la connexion</button></p>
+    </form>
+
+    <div class="auth-form" id="auth-me" data-view="me" hidden>
+      <p class="auth-who">
+        <span class="account-avatar" id="me-avatar" aria-hidden="true">?</span>
+        <span><b id="me-name">—</b><br /><span class="auth-dim" id="me-mail">—</span></span>
+      </p>
+      <p class="auth-dim" id="me-since"></p>
+      <form class="auth-inline" id="auth-pass">
+        <label>Mot de passe actuel<input id="pass-current" type="password" autocomplete="current-password" required /></label>
+        <label>Nouveau mot de passe<input id="pass-next" type="password" autocomplete="new-password" required /></label>
+        <button class="btn btn-ghost" type="submit">Changer le mot de passe</button>
+      </form>
+      <div class="auth-actions">
+        <button class="btn btn-ghost" id="me-recovery" type="button">Régénérer un code de récupération</button>
+        <button class="btn btn-ghost" id="me-logout" type="button">Se déconnecter</button>
+      </div>
+    </div>
+
+    <div class="auth-form" id="auth-fb" data-view="fb" hidden>
+      <p class="auth-who">
+        <span class="account-avatar" id="fb-avatar" aria-hidden="true">?</span>
+        <span><b id="fb-name">—</b><br /><span class="auth-dim" id="fb-mail">—</span></span>
+      </p>
+      <p class="auth-dim">Connecté avec Freebuff — Google, GitHub ou Apple via votre compte Freebuff.</p>
+      <form method="post" action="/auth/freebuff/signout">
+        <button class="btn btn-ghost" type="submit">Se déconnecter</button>
+      </form>
+    </div>
+
+    <p class="auth-msg" id="auth-msg" hidden></p>
+    <div class="auth-code" id="auth-code" hidden>
+      <p>Notez ce code de récupération : il ne sera plus affiché ensuite.</p>
+      <code id="auth-code-value">—</code>
+      <button class="btn btn-ghost" id="auth-code-copy" type="button">Copier</button>
+    </div>
+  </div>
+</div>
+
+<script src="accounts.js"></script>
+<script src="records.js"></script>
+<script src="island.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
