@@ -1,8 +1,8 @@
 Site source : https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page/
-Version : v6.1.1
+Version : v6.1.2
 
 Badge de version dans le HTML :
-data-site-version="v6.1.1"
+data-site-version="v6.1.2"
 
 Balises script :
 <script src="js/lua54.js">
@@ -44,7 +44,7 @@ Arborescence finale (octets, chemin) :
     5531  .github/workflows/sync-site.yml
     1223  .github/workflows/verify-decrypt.yml
      257  .gitignore
-    4171  CHANGELOG.md
+    5150  CHANGELOG.md
     3983  README.md
        6  VERSION
      382  assets/brand/freebuff.svg
