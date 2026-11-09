@@ -55,17 +55,18 @@ jobs:
             echo "badge insere en v$VERSION"
           fi
 
-          # Correctifs : charges juste apres lua54.js.
+          # Correctifs : charges en dernier, apres app.js, pour que Recover et
+          # Zip existent deja quand le module s'evalue.
           if ! grep -q 'js/compat.js' _site/index.html; then
-            sed -i 's#<script src="js/lua54\.js"></script>#&\n<script src="js/compat.js"></script>#' _site/index.html
-            echo "module de correctifs injecte"
+            sed -i 's#<script src="js/app\.js"></script>#&\n<script src="js/compat.js"></script>#' _site/index.html
+            echo "module de correctifs injecte apres app.js"
           else
             echo "module de correctifs deja present"
           fi
 
           echo "--- controle ---"
           grep -o 'data-site-version="[^"]*"' _site/index.html || echo "BADGE ABSENT"
-          grep -c 'js/compat.js' _site/index.html || true
+          grep -n 'src="js/.*\.js"' _site/index.html || true
           test -f _site/js/compat.js || { echo "compat.js MANQUANT"; exit 1; }
           echo "--- contenu publie ---"
           find _site -type f | sort
