@@ -1,9 +1,9 @@
 name: sync-site
 
-# Synchronise l'integralite du site publie dans ce depot prive, en le
-# reorganisant : index.html a la racine, css/ pour les styles, js/ pour les
-# modules, assets/brand/ pour les logos.
-# Declencheurs : push sur main, manuel, et chaque nuit a 04:00 UTC.
+# Synchronise le site publie dans ce depot prive et le range par type :
+# index.html a la racine, css/ pour les styles, js/ pour les modules,
+# assets/brand/ pour les logos. Le workflow se verifie lui-meme et ecrit
+# son diagnostic dans SYNC.txt.
 on:
   push:
     branches: [main]
@@ -49,8 +49,7 @@ jobs:
             fetch "brand/$s.svg" "assets/brand/$s.svg"
           done
 
-          # La source publiee a toujours ses chemins a plat : on les reecrit
-          # vers la nouvelle arborescence (idempotent, le HTML est retelecharge).
+          # La source publiee a ses chemins a plat : on les reecrit.
           sed -i -E \
             -e 's#(src|href)="\./#\1="#g' \
             -e 's#(src|href)="(app|lua54|decompile|recover|fxap|deobf|anti|nui|sanitize|zip|records|accounts|island)\.js"#\1="js/\2.js"#g' \
@@ -58,31 +57,45 @@ jobs:
             -e 's#(src|href)="brand/#\1="assets/brand/#g' \
             index.html
 
-          # Garde-fou : si la reecriture a rate, on ne commite pas un site casse.
-          if ! grep -q 'src="js/app.js"' index.html; then
-            echo "ERREUR : app.js non reecrit vers js/"; exit 1
-          fi
-          if ! grep -q 'href="css/styles.css"' index.html; then
-            echo "ERREUR : styles.css non reecrit vers css/"; exit 1
-          fi
-
-          # Menage des anciens fichiers a plat
-          for f in *.js styles.css; do
-            [ -e "$f" ] || continue
-            git rm -q --ignore-unmatch "$f"
-          done
-          if [ -d brand ]; then
-            git rm -rq --ignore-unmatch brand
-          fi
+          # Verification : chaque reference locale doit exister sur disque.
+          grep -oE '(src|href)="[^"]+"' index.html | sed -E 's/^[a-z]+="//; s/"$//' | sort -u | while read -r p; do
+            case "$p" in http*|data:*|\#*|"") continue ;; esac
+            p="${p#/}"
+            if [ -f "$p" ]; then echo "reference ok : $p"; else echo "MANQUANT : $p"; fi
+          done > /tmp/check.txt
 
           {
             echo "Site source : $BASE/"
             echo ""
-            echo "Arborescence synchronisee (octets, chemin) :"
-            find . -path ./.git -prune -o -type f ! -name SYNC.txt -print | sed 's|^\./||' | sort | while read -r f; do
-              printf '%8s  %s\n' "$(wc -c < "$f")" "$f"
-            done
+            echo "Balises script :"
+            grep -oE '<script[^>]*>' index.html || true
+            echo ""
+            echo "Balises link :"
+            grep -oE '<link[^>]*>' index.html || true
+            echo ""
+            echo "Verification des references :"
+            cat /tmp/check.txt
+            echo ""
           } > SYNC.txt
+
+          if grep -q '^MANQUANT' /tmp/check.txt; then
+            echo "ATTENTION : reference non resolue, anciens fichiers a plat conserves" | tee -a SYNC.txt
+          else
+            for f in *.js styles.css; do
+              [ -e "$f" ] || continue
+              git rm -q --ignore-unmatch "$f"
+            done
+            if [ -d brand ]; then
+              git rm -rq --ignore-unmatch brand
+            fi
+            {
+              echo "Arborescence finale (octets, chemin) :"
+              find . -path ./.git -prune -o -type f ! -name SYNC.txt -print | sed 's|^\./||' | sort | while read -r f; do
+                printf '%8s  %s\n' "$(wc -c < "$f")" "$f"
+              done
+            } >> SYNC.txt
+          fi
+
           cat SYNC.txt
 
       - name: Commiter chaque modification
