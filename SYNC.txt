@@ -40,7 +40,7 @@ reference ok : js/sanitize.js
 reference ok : js/zip.js
 
 Arborescence finale (octets, chemin) :
-    4492  .github/workflows/sync-site.yml
+    5210  .github/workflows/sync-site.yml
      257  .gitignore
      970  CHANGELOG.md
     3103  README.md
