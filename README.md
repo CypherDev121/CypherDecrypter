@@ -32,20 +32,37 @@ CypherDecrypter/
 ├── assets/
 │   └── brand/            logos de l'ecran de connexion
 ├── .github/workflows/
-│   └── sync-site.yml     synchronisation + injection de la version
+│   └── sync-site.yml     synchronisation + version + release
 ├── SYNC.txt              manifeste : source, version, references, tailles
 └── README.md
 ```
 
 ## Version
 
-Le fichier `VERSION` est la seule source de verite. Le workflow lit sa valeur et l'affiche dans l'en-tete du site (badge a cote de « Lua 5.4 »), puis commite avec `sync: site publie vX.Y.Z`.
+Le fichier `VERSION` est la seule source de verite. Le workflow lit sa valeur, l'ecrit dans le badge de l'en-tete, puis commite et publie une release `vX.Y.Z` si elle n'existe pas.
 
 Pour publier une nouvelle version :
 
 1. modifier `VERSION` (`6.0.1`, `6.1.0`, `7.0.0` selon l'ampleur) ;
 2. ajouter l'entree correspondante dans `CHANGELOG.md` ;
-3. pousser — le badge et le manifeste suivent automatiquement.
+3. pousser — badge, commit et release suivent automatiquement.
+
+## Publication du site
+
+Le site public est heberge par **Freebuff** (projet « CypherDecrypter — Lua 5.4 ») sur
+`https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page/`.
+
+La publication se declenche depuis l'application Freebuff : le depot GitHub ne peut pas la lancer.
+Pour que la version soit visible par les visiteurs, la page publiee doit contenir cette pastille,
+juste apres `<span class="badge badge-azure">Lua 5.4</span>` dans l'en-tete :
+
+```html
+<span class="badge badge-azure" data-site-version="v6.0.0" title="Version du site">v6.0.0</span>
+```
+
+Le workflow gere les deux cas : si la page publiee porte deja la pastille, il **met a jour son
+numero** depuis `VERSION` ; sinon il l'insere. Une montee de version se propage donc meme si le
+HTML publie contient deja un numero.
 
 ## Lancer en local
 
@@ -56,10 +73,6 @@ python -m http.server 8080
 ```
 
 Puis ouvrir http://localhost:8080 .
-
-## Synchronisation
-
-Le workflow `sync-site.yml` tourne a chaque push sur `main`, a la demande, et chaque nuit a 04:00 UTC. Il retelecharge le site publie, le range dans cette arborescence, reecrit les chemins du HTML, injecte le badge de version, verifie que chaque reference existe, puis ne commite que si quelque chose a change.
 
 ## Notes
 

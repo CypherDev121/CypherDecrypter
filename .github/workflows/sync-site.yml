@@ -1,8 +1,8 @@
 name: sync-site
 
-# Synchronise le site publie dans ce depot prive, le range par type, injecte
-# le numero de version lu dans le fichier VERSION, et publie une release
-# GitHub quand cette version n'en a pas encore.
+# Synchronise le site publie dans ce depot prive, le range par type, aligne le
+# numero de version affiche dans la page sur le fichier VERSION, et publie une
+# release GitHub quand cette version n'en a pas encore.
 # Declencheurs : push sur main, manuel, et chaque nuit a 04:00 UTC.
 on:
   push:
@@ -62,10 +62,15 @@ jobs:
             -e 's#(src|href)="brand/#\1="assets/brand/#g' \
             index.html
 
-          # Badge de version dans l'en-tete, juste apres le badge "Lua 5.4".
-          # Idempotent : le HTML est retelecharge a chaque passage.
-          if ! grep -q 'data-site-version' index.html; then
+          # Badge de version : aligne s'il existe deja dans la page publiee,
+          # insere sinon juste apres le badge "Lua 5.4".
+          if grep -q 'data-site-version' index.html; then
+            sed -i -E "s#data-site-version=\"[^\"]*\"#data-site-version=\"v$VERSION\"#g" index.html
+            sed -i -E "s#(data-site-version=\"v$VERSION\"[^>]*>)v[0-9][^<]*#\\1v$VERSION#g" index.html
+            echo "Badge existant aligne sur v$VERSION"
+          else
             sed -i "s#<span class=\"badge badge-azure\">Lua 5.4</span>#&<span class=\"badge badge-azure\" data-site-version=\"v$VERSION\" title=\"Version du site\">v$VERSION</span>#" index.html
+            echo "Badge insere en v$VERSION"
           fi
 
           # Verification : chaque reference locale doit exister sur disque.
