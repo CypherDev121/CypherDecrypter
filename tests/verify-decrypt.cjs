@@ -86,7 +86,7 @@ function check(name, cond, extra) {
   const rotCbc = await R.decrypt(cbcCipher, { key: keyBytes, mode: 'CBC', iv: new Uint8Array(16), lua: L });
   check('AES-CBC dechiffre toujours', !!(rotCbc && rotCbc.ok === true), rotCbc && rotCbc.reason);
 
-  /* ---------------- export sans escrow ---------------- */
+  /* ---------------- filtre escrow ---------------- */
   check('filtre escrow expose', !!(CE && typeof CE.isEscrowEntry === 'function'));
   if (!CE) throw new Error('CypherEscrow absent : compat.js n a pas termine son evaluation');
 
@@ -100,10 +100,17 @@ function check(name, cond, extra) {
   check('bytecode conserve', CE.isEscrowEntry({ path: 'client/y.lua', bytes }) === false);
   check('asset .ymap non touche', CE.isEscrowEntry({ path: 'stream/a.ymap', bytes: encContainer }) === false);
 
+  /* ---------------- nettoyage du fxmanifest ---------------- */
   const mani = "fx_version 'cerulean'\nclient_scripts {\n  'client/activate_ipl.lua',\n  'client/other.lua'\n}\nclient_script 'client/Elevator.lua'\n";
   const maniOut = CE.stripManifest(mani, ['client/activate_ipl.lua', 'client/Elevator.lua'], 2);
-  check('manifeste : reference retiree', maniOut.indexOf('activate_ipl.lua') === -1, maniOut);
-  check('manifeste : directive orpheline commentee', maniOut.indexOf("client_script 'client/Elevator.lua'") === -1 && /-- retire/.test(maniOut), maniOut);
+
+  const active = maniOut.split('\n').filter((l) => {
+    const t = l.trim();
+    if (t.indexOf('--') === 0) return false;
+    return /client_script|activate_ipl|Elevator/.test(t);
+  });
+  check('manifeste : plus aucune reference active', active.length === 0, active.join(' | '));
+  check('manifeste : directive orpheline commentee', /^-- retire[^\n]*Elevator/m.test(maniOut));
   check('manifeste : entree voisine gardee', maniOut.indexOf('client/other.lua') !== -1, maniOut);
   check('manifeste : pas de virgule orpheline', !/\{\s*,/.test(maniOut) && !/\n\s*,/.test(maniOut), maniOut);
 
@@ -120,7 +127,9 @@ function check(name, cond, extra) {
   check('manifeste nettoye = Lua valide', luaOk, luaErr);
 
   /* ---------------- archive ---------------- */
-  if (typeof ctx.Zip.create !== 'function') throw new Error('Zip.create absent');
+  if (typeof ctx.Zip.create !== 'function' || typeof ctx.Zip.entries !== 'function') {
+    throw new Error('API Zip incomplete');
+  }
 
   CE.set(true);
   const zOn = ctx.Zip.create([
@@ -128,16 +137,30 @@ function check(name, cond, extra) {
     { path: 'stream/a.ymap', bytes: encContainer },
     { path: 'fxmanifest.lua', text: mani }
   ], { comment: 'test' });
-  check('zip sans escrow : Zip.create renvoie des octets', zOn instanceof Uint8Array && zOn.length > 0, zOn && zOn.constructor && zOn.constructor.name);
-  const onBytes = Buffer.from(zOn);
-  check('zip sans escrow : conteneur absent', onBytes.indexOf(Buffer.from('activate_ipl.lua')) === -1);
-  check('zip sans escrow : asset present', onBytes.indexOf(Buffer.from('stream/a.ymap')) !== -1);
-  check('zip sans escrow : rapport present', onBytes.indexOf(Buffer.from('ESCROW-RETIRE.txt')) !== -1);
-  check('zip sans escrow : manifeste present', onBytes.indexOf(Buffer.from('fxmanifest.lua')) !== -1);
+  check('zip sans escrow : octets produits', zOn instanceof Uint8Array && zOn.length > 0, zOn && zOn.constructor && zOn.constructor.name);
+
+  // Le nom du conteneur figure aussi dans le rapport : on lit donc le sommaire
+  // reel de l'archive, pas le texte brut des octets.
+  const listed = await ctx.Zip.entries(zOn);
+  const names = listed.map((e) => e.name);
+  check('zip sans escrow : conteneur absent', names.indexOf('client/activate_ipl.lua') === -1, names.join(', '));
+  check('zip sans escrow : asset present', names.indexOf('stream/a.ymap') !== -1, names.join(', '));
+  check('zip sans escrow : rapport present', names.indexOf('ESCROW-RETIRE.txt') !== -1, names.join(', '));
+  check('zip sans escrow : manifeste present', names.indexOf('fxmanifest.lua') !== -1, names.join(', '));
+
+  const maniEntry = listed.filter((e) => e.name === 'fxmanifest.lua')[0];
+  const inside = maniEntry && maniEntry.data ? Buffer.from(maniEntry.data).toString('utf8') : '';
+  check('zip sans escrow : manifeste nettoye a l interieur',
+    inside.length > 0 && inside.indexOf('activate_ipl.lua') === -1 && inside.indexOf('client/other.lua') !== -1,
+    inside.slice(0, 120));
+
+  const report = listed.filter((e) => e.name === 'ESCROW-RETIRE.txt')[0];
+  const reportText = report && report.data ? Buffer.from(report.data).toString('utf8') : '';
+  check('zip sans escrow : rapport nomme le fichier retire', reportText.indexOf('client/activate_ipl.lua') !== -1);
 
   CE.set(false);
-  const zOff = Buffer.from(ctx.Zip.create([escrowEntry], { comment: 'test' }));
-  check('option desactivee : conteneur garde', zOff.indexOf(Buffer.from('activate_ipl.lua')) !== -1);
+  const zOffNames = (await ctx.Zip.entries(ctx.Zip.create([escrowEntry], { comment: 'test' }))).map((e) => e.name);
+  check('option desactivee : conteneur garde', zOffNames.indexOf('client/activate_ipl.lua') !== -1, zOffNames.join(', '));
 
   const app = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
   console.log('appels Lua54.parse( dans app.js : ' + (app.match(/Lua54\.parse\(/g) || []).length);
