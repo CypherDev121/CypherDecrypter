@@ -86,7 +86,7 @@ function check(name, cond, extra) {
   const rotCbc = await R.decrypt(cbcCipher, { key: keyBytes, mode: 'CBC', iv: new Uint8Array(16), lua: L });
   check('AES-CBC dechiffre toujours', !!(rotCbc && rotCbc.ok === true), rotCbc && rotCbc.reason);
 
-  /* ---------------- filtre escrow ---------------- */
+  /* ---------------- detection des conteneurs ---------------- */
   check('filtre escrow expose', !!(CE && typeof CE.isEscrowEntry === 'function'));
   if (!CE) throw new Error('CypherEscrow absent : compat.js n a pas termine son evaluation');
 
@@ -95,8 +95,14 @@ function check(name, cond, extra) {
   ]));
   const escrowEntry = { path: 'client/activate_ipl.lua', bytes: encContainer };
 
-  check('conteneur chiffre reconnu', CE.isEscrowEntry(escrowEntry) === true);
+  check('conteneur chiffre (octets) reconnu', CE.isEscrowEntry(escrowEntry) === true);
+  check('conteneur chiffre (texte mojibake) reconnu',
+    CE.isEscrowEntry({ path: 'client/Elevator.lua', text: 'FXAP' + '\uFFFD'.repeat(80) }) === true);
+  check('conteneur chiffre (texte latin-1) reconnu',
+    CE.isEscrowEntry({ path: 'client/interaction.lua', text: '\u0001\u0002\u0080\u009f'.repeat(40) }) === true);
   check('source .lua conservee', CE.isEscrowEntry({ path: 'client/x.lua', bytes: new Uint8Array(Buffer.from('local a = 1\nprint(a)\n')) }) === false);
+  check('source .lua accentuee conservee',
+    CE.isEscrowEntry({ path: 'client/y.lua', text: '-- commentaire accentue : deja vu, ca marche\nlocal s = "text"\n' }) === false);
   check('bytecode conserve', CE.isEscrowEntry({ path: 'client/y.lua', bytes }) === false);
   check('asset .ymap non touche', CE.isEscrowEntry({ path: 'stream/a.ymap', bytes: encContainer }) === false);
 
@@ -104,8 +110,6 @@ function check(name, cond, extra) {
   const mani = "fx_version 'cerulean'\nclient_scripts {\n  'client/activate_ipl.lua',\n  'client/other.lua'\n}\nclient_script 'client/Elevator.lua'\n";
   const maniOut = CE.stripManifest(mani, ['client/activate_ipl.lua', 'client/Elevator.lua'], 2);
 
-  // Une ligne active est un appel de directive (client_script 'x') ou une
-  // reference a un fichier retire. "client_scripts {" n'entre dans aucun cas.
   const active = maniOut.split('\n').filter((l) => {
     const t = l.trim();
     if (t.indexOf('--') === 0) return false;
@@ -116,7 +120,6 @@ function check(name, cond, extra) {
   check('manifeste : entree voisine gardee', maniOut.indexOf('client/other.lua') !== -1, maniOut);
   check('manifeste : pas de virgule orpheline', !/\{\s*,/.test(maniOut) && !/\n\s*,/.test(maniOut), maniOut);
 
-  // La syntaxe est verifiee par le vrai parseur Lua, pas par une expression reguliere.
   fs.writeFileSync(MANIFEST_OUT, maniOut);
   let luaOk = true;
   let luaErr = '';
@@ -139,16 +142,14 @@ function check(name, cond, extra) {
     { path: 'stream/a.ymap', bytes: encContainer },
     { path: 'fxmanifest.lua', text: mani }
   ], { comment: 'test' });
-  check('zip sans escrow : octets produits', zOn instanceof Uint8Array && zOn.length > 0, zOn && zOn.constructor && zOn.constructor.name);
+  check('zip sans escrow : octets produits', zOn instanceof Uint8Array && zOn.length > 0);
 
-  // Le nom du conteneur figure aussi dans le rapport : on lit donc le sommaire
-  // reel de l'archive, pas le texte brut des octets.
   const listed = await ctx.Zip.entries(zOn);
   const names = listed.map((e) => e.name);
   check('zip sans escrow : conteneur absent', names.indexOf('client/activate_ipl.lua') === -1, names.join(', '));
   check('zip sans escrow : asset present', names.indexOf('stream/a.ymap') !== -1, names.join(', '));
   check('zip sans escrow : rapport present', names.indexOf('ESCROW-RETIRE.txt') !== -1, names.join(', '));
-  check('zip sans escrow : manifeste present', names.indexOf('fxmanifest.lua') !== -1, names.join(', '));
+  check('zip sans escrow : pas de note informative', names.indexOf('ESCROW-INFO.txt') === -1, names.join(', '));
 
   const maniEntry = listed.filter((e) => e.name === 'fxmanifest.lua')[0];
   const inside = maniEntry && maniEntry.data ? Buffer.from(maniEntry.data).toString('utf8') : '';
@@ -156,13 +157,27 @@ function check(name, cond, extra) {
     inside.length > 0 && inside.indexOf('activate_ipl.lua') === -1 && inside.indexOf('client/other.lua') !== -1,
     inside.slice(0, 120));
 
-  const report = listed.filter((e) => e.name === 'ESCROW-RETIRE.txt')[0];
-  const reportText = report && report.data ? Buffer.from(report.data).toString('utf8') : '';
-  check('zip sans escrow : rapport nomme le fichier retire', reportText.indexOf('client/activate_ipl.lua') !== -1);
-
+  /* ---------------- option desactivee ---------------- */
   CE.set(false);
-  const zOffNames = (await ctx.Zip.entries(ctx.Zip.create([escrowEntry], { comment: 'test' }))).map((e) => e.name);
-  check('option desactivee : conteneur garde', zOffNames.indexOf('client/activate_ipl.lua') !== -1, zOffNames.join(', '));
+  const zOff = await ctx.Zip.entries(ctx.Zip.create([
+    escrowEntry,
+    { path: 'stream/a.ymap', bytes: encContainer }
+  ], { comment: 'test' }));
+  const offNames = zOff.map((e) => e.name);
+  check('option desactivee : conteneur garde', offNames.indexOf('client/activate_ipl.lua') !== -1, offNames.join(', '));
+  check('option desactivee : note informative ajoutee', offNames.indexOf('ESCROW-INFO.txt') !== -1, offNames.join(', '));
+
+  const info = zOff.filter((e) => e.name === 'ESCROW-INFO.txt')[0];
+  const infoText = info && info.data ? Buffer.from(info.data).toString('utf8') : '';
+  check('note informative : nomme le fichier et l option',
+    infoText.indexOf('client/activate_ipl.lua') !== -1 && /sans aucun fichier escrow/.test(infoText),
+    infoText.slice(0, 120));
+
+  const zNoEscrow = ctx.Zip.create([{ path: 'client/x.lua', text: 'local a = 1\n' }], { comment: 'test' });
+  const noEscrowNames = (await ctx.Zip.entries(zNoEscrow)).map((e) => e.name);
+  check('archive sans conteneur : aucune note ajoutee',
+    noEscrowNames.indexOf('ESCROW-INFO.txt') === -1 && noEscrowNames.indexOf('client/x.lua') !== -1,
+    noEscrowNames.join(', '));
 
   const app = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
   console.log('appels Lua54.parse( dans app.js : ' + (app.match(/Lua54\.parse\(/g) || []).length);

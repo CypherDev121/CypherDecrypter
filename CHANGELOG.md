@@ -5,6 +5,27 @@ Format [SemVer](https://semver.org/lang/fr/).
 
 La version affichee sur le site est **injectee depuis le fichier `VERSION`** par le workflow de synchronisation : il suffit de modifier `VERSION` (et ce changelog) pour que le badge suive au prochain passage.
 
+## [6.1.0] - 2026-11-09
+
+### Ajoute
+
+- Option « Produire une archive sans aucun fichier escrow » dans l'onglet Clean FXAP & Mapping : les conteneurs chiffres sont retires de l'archive et chaque `fxmanifest.lua` est nettoye des references correspondantes, pour qu'aucun fichier manquant ne soit reclame au demarrage. Un rapport `ESCROW-RETIRE.txt` liste les fichiers ecartes et ce qui cesse de fonctionner.
+
+### Corrige
+
+- La detection d'un conteneur escrow ne depend plus de la forme de l'entree : un `.lua` peut arriver en octets bruts ou deja decode en chaine (latin-1 ou UTF-8 permissif). Les deux cas sont reconnus, un `fxmanifest` n'est jamais modifie par erreur, et les sources Lua accentuees ne sont jamais prises pour du chiffre.
+- Le nettoyage du `fxmanifest` ne laisse plus de virgule orpheline quand le fichier retire occupait seul sa ligne : le manifeste produit est verifie par le vrai parseur `lua5.4`, pas par une expression reguliere.
+- Le module de correctifs est charge apres `app.js` et rejoue au `DOMContentLoaded` : le correctif AES-ECB n'est plus ignore si `recover.js` n'est pas encore evalue au moment du chargement.
+
+### Modifie
+
+- Option laissee decochee : l'archive garde les conteneurs et ajoute `ESCROW-INFO.txt`, qui explique pourquoi un `.lua` chiffre s'affiche comme binaire (GitHub, editeur) et comment produire une archive sans escrow.
+- Harnais de test deplace dans `tests/verify-decrypt.cjs`, execute par `node` : le journal du job reste court et lisible.
+
+### Note
+
+Cette option retire les fichiers escrow, elle ne les dechiffre pas. Un conteneur chiffre par FXAP reste indechiffrable sans la cle de l'auteur de la ressource.
+
 ## [6.0.1] - 2026-11-09
 
 ### Corrige
@@ -14,7 +35,7 @@ La version affichee sur le site est **injectee depuis le fichier `VERSION`** par
 
 ### Ajoute
 
-- `js/compat.js` : module de correctifs charge apres les autres et injecte dans `index.html` au deploiement Pages. Il vit hors des fichiers resynchronises, qui sont retelecharges a chaque passage.
+- `js/compat.js` : module de correctifs charge apres les autres et injecte dans `index.html` au deploiement Pages. Il vit hors des fichiers resynchronises, qui sont retelescharges a chaque passage.
 - Workflow `verify-decrypt` : compile un chunk avec `luac5.4` puis verifie la lecture, la decompilation, AES-ECB et AES-CBC a chaque modification du moteur.
 
 ## [6.0.0] - 2026-11-09
