@@ -41,8 +41,8 @@ jobs:
           fetch "" index.html
 
           # 1. ressources referencees par le HTML (css, scripts, images)
-          grep -oE '(src|href)="[^"]+"' index.html | sed -E 's/^[a-z]+="//; s/"$//' | sort -u > /tmp/html-assets.txt
-          cat /tmp/html-assets.txt
+          grep -oE '(src|href)="[^"]+"' index.html | sed -E 's/^[a-z]+="//; s/"$//' | sort -u > /tmp/html-assets.txt || true
+          cat /tmp/html-assets.txt || true
           while read -r p; do
             case "$p" in http*|\#*|data:*|mailto:*|"") continue ;; esac
             p="${p#./}"; p="${p#/}"
@@ -52,8 +52,8 @@ jobs:
 
           # 2. ressources referencees par le CSS (polices, images, svg)
           if [ -f styles.css ]; then
-            grep -oE 'url\([^)]*\)' styles.css | sed -e 's/^url(//' -e 's/)$//' -e "s/^[\"']//" -e "s/[\"']$//" | sort -u > /tmp/css-assets.txt
-            cat /tmp/css-assets.txt
+            grep -oE 'url\([^)]*\)' styles.css | sed -e 's/^url(//' -e 's/)$//' -e "s/^[\"']//" -e "s/[\"']$//" | sort -u > /tmp/css-assets.txt || true
+            cat /tmp/css-assets.txt || true
             while read -r p; do
               case "$p" in http*|data:*|"") continue ;; esac
               p="${p#./}"; p="${p#/}"
@@ -67,9 +67,18 @@ jobs:
             [ -f "$f" ] || fetch "$f" "$f"
           done
 
-          echo "--- fichiers presents ---"
-          find . -path ./.git -prune -o -type f -print | sort
-          du -sh --exclude=.git .
+          # 4. manifeste deterministe : prouve que la synchro a ete jusqu'au bout
+          {
+            echo "Site source : $BASE/"
+            echo ""
+            echo "Fichiers synchronises (octets, chemin) :"
+            find . -path ./.git -prune -o -type f ! -name SYNC.txt -print | sed 's|^\./||' | sort | while read -r f; do
+              printf '%8s  %s\n' "$(wc -c < "$f")" "$f"
+            done
+          } > SYNC.txt
+
+          echo "--- SYNC.txt ---"
+          cat SYNC.txt
 
       - name: Commiter chaque modification
         run: |
