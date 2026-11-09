@@ -2,34 +2,40 @@
 
 Boite a outils Lua 5.4 pour FiveM : decompilation de bytecode, nettoyage FXAP, audit et nettoyage de NUI/Lua, recuperation de sources obfusquees, classement local.
 
-**Sources recuperees le 9 novembre 2026** depuis le site publie, apres la perte du dossier local d'origine. Le site servait ses fichiers source non minifies : le contenu recupere est le code d'origine, commentaires inclus, pas un bundle reconstitue.
+**Sources recuperees le 9 novembre 2026** depuis le site publie, apres la perte du dossier local d'origine. Le site servait ses fichiers non minifies : c'est le code d'origine, commentaires inclus.
 
-## Contenu
+## Arborescence
 
-| Fichier | Role |
-| --- | --- |
-| `index.html` | Structure de l'interface (onglets Bytecode, FXAP, Classement, Source, Recuperation, AntiBackdoor, AntiCleanLUA, AntiCleanNUI, AntiCleanBackdoor) |
-| `styles.css` | Styles complets |
-| `app.js` | Cablage de l'interface, traitements par lot, exports |
-| `lua54.js` | Lecture du bytecode Lua 5.4 (en-tete, constantes, prototypes) |
-| `decompile.js` | Desassemblage et reconstruction du source Lua |
-| `recover.js` | Extraction de chunks, AES-CBC/CTR/ECB avec cle, nettoyage des conteneurs FXAP |
-| `fxap.js` | Analyse des conteneurs FXAP (entropie, verdict, chaines) |
-| `nui.js` | Audit NUI (eval, scripts distants, iframes, cookies, @import) |
-| `anti.js` | Audit backdoor Lua et nettoyage (renommage `L_xx`, lignes mortes) |
-| `sanitize.js` | Neutralisation des motifs dangereux en commentaire |
-| `deobf.js` | Desobfuscation de source Lua |
-| `records.js` | Classement local des sessions |
-| `accounts.js` | Comptes locaux (PBKDF2-SHA256, code de recuperation `CD-XXXX-XXXX-XXXX`) |
-| `zip.js` | Ecriture des archives ZIP |
-| `island.js` | Element isole de l'interface |
-| `brand/*.svg` | Logos affiches dans l'ecran de connexion |
-
-Total : environ 350 Ko de source.
+```
+CypherDecrypter/
+├── index.html            interface : 9 onglets + ecran de connexion
+├── css/
+│   └── styles.css        tout le style (44 Ko)
+├── js/
+│   ├── app.js            cablage de l'interface, lots, exports ZIP
+│   ├── lua54.js          lecture du bytecode Lua 5.4
+│   ├── decompile.js      desassemblage et reconstruction du source
+│   ├── recover.js        chunks, AES-CBC/CTR/ECB, conteneurs FXAP
+│   ├── fxap.js           analyse des conteneurs FXAP
+│   ├── anti.js           audit backdoor et nettoyage Lua
+│   ├── nui.js            audit NUI (eval, iframes, cookies)
+│   ├── sanitize.js       neutralisation des motifs dangereux
+│   ├── deobf.js          desobfuscation de source Lua
+│   ├── records.js        classement local des sessions
+│   ├── accounts.js       comptes locaux (PBKDF2-SHA256)
+│   ├── zip.js            ecriture des archives ZIP
+│   └── island.js         element isole de l'interface
+├── assets/
+│   └── brand/            logos de l'ecran de connexion
+├── .github/workflows/
+│   └── sync-site.yml     synchronisation automatique du site publie
+├── SYNC.txt              manifeste : source, tailles, chemins
+└── README.md
+```
 
 ## Lancer en local
 
-Aucune dependance, aucun build : c'est du HTML/CSS/JS statique.
+Aucune dependance, aucun build : HTML/CSS/JS statique.
 
 ```bash
 python -m http.server 8080
@@ -37,11 +43,11 @@ python -m http.server 8080
 
 Puis ouvrir http://localhost:8080 .
 
-## Recuperation
+## Synchronisation
 
-Les fichiers ont ete telecharges par `.github/workflows/recover-sources.yml`, qui suit les balises `src` et `href` de `index.html` puis complete avec les modules connus. Relancer ce workflow resynchronise le depot avec la version publiee tant qu'elle est en ligne.
+Le workflow `sync-site.yml` tourne a chaque push sur `main`, a la demande, et chaque nuit a 04:00 UTC. Il retelecharge le site publie, le range dans cette arborescence, reecrit les chemins du HTML (avec garde-fou : il echoue plutot que de commiter une page cassee), puis ne commite que si quelque chose a change.
 
 ## Notes
 
 - Tout s'execute dans le navigateur : aucun fichier n'est envoye a un serveur.
-- Depot prive. Un depot prive n'est pas open source : si le projet doit etre publie, il faudra changer sa visibilite (Settings > General > Danger Zone).
+- Depot prive. Un depot prive n'est pas open source : si le projet doit etre publie, il faut changer sa visibilite (Settings > General > Danger Zone).

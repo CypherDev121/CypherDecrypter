@@ -1,0 +1,98 @@
+name: sync-site
+
+# Synchronise l'integralite du site publie dans ce depot prive, en le
+# reorganisant : index.html a la racine, css/ pour les styles, js/ pour les
+# modules, assets/brand/ pour les logos.
+# Declencheurs : push sur main, manuel, et chaque nuit a 04:00 UTC.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Telecharger et reorganiser
+        run: |
+          set -uo pipefail
+          BASE="https://site-69d99fb9841c47e8bfd4dda067302ad1.freebuff.page"
+          mkdir -p js css assets/brand
+
+          fetch() {
+            u="$1"; out="$2"
+            mkdir -p "$(dirname "$out")"
+            if curl -fsSL "$BASE/$u" -o "$out.tmp"; then
+              mv "$out.tmp" "$out"
+              echo "ok $out"
+            else
+              rm -f "$out.tmp"
+              echo "absent $out"
+            fi
+          }
+
+          fetch "" index.html
+          fetch "styles.css" css/styles.css
+
+          for f in app lua54 decompile recover fxap deobf anti nui sanitize zip records accounts island; do
+            fetch "$f.js" "js/$f.js"
+          done
+
+          for s in freebuff github google microsoft; do
+            fetch "brand/$s.svg" "assets/brand/$s.svg"
+          done
+
+          # La source publiee a toujours ses chemins a plat : on les reecrit
+          # vers la nouvelle arborescence (idempotent, le HTML est retelecharge).
+          sed -i -E \
+            -e 's#(src|href)="\./#\1="#g' \
+            -e 's#(src|href)="(app|lua54|decompile|recover|fxap|deobf|anti|nui|sanitize|zip|records|accounts|island)\.js"#\1="js/\2.js"#g' \
+            -e 's#(src|href)="styles\.css"#\1="css/styles.css"#g' \
+            -e 's#(src|href)="brand/#\1="assets/brand/#g' \
+            index.html
+
+          # Garde-fou : si la reecriture a rate, on ne commite pas un site casse.
+          if ! grep -q 'src="js/app.js"' index.html; then
+            echo "ERREUR : app.js non reecrit vers js/"; exit 1
+          fi
+          if ! grep -q 'href="css/styles.css"' index.html; then
+            echo "ERREUR : styles.css non reecrit vers css/"; exit 1
+          fi
+
+          # Menage des anciens fichiers a plat
+          for f in *.js styles.css; do
+            [ -e "$f" ] || continue
+            git rm -q --ignore-unmatch "$f"
+          done
+          if [ -d brand ]; then
+            git rm -rq --ignore-unmatch brand
+          fi
+
+          {
+            echo "Site source : $BASE/"
+            echo ""
+            echo "Arborescence synchronisee (octets, chemin) :"
+            find . -path ./.git -prune -o -type f ! -name SYNC.txt -print | sed 's|^\./||' | sort | while read -r f; do
+              printf '%8s  %s\n' "$(wc -c < "$f")" "$f"
+            done
+          } > SYNC.txt
+          cat SYNC.txt
+
+      - name: Commiter chaque modification
+        run: |
+          git config user.name "CypherDev121"
+          git config user.email "lykoslegoatdev@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Aucun changement depuis la derniere synchronisation"
+          else
+            git commit -m "sync: mise a jour du site publie $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+            git push
+          fi
