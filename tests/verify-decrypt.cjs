@@ -104,10 +104,12 @@ function check(name, cond, extra) {
   const mani = "fx_version 'cerulean'\nclient_scripts {\n  'client/activate_ipl.lua',\n  'client/other.lua'\n}\nclient_script 'client/Elevator.lua'\n";
   const maniOut = CE.stripManifest(mani, ['client/activate_ipl.lua', 'client/Elevator.lua'], 2);
 
+  // Une ligne active est un appel de directive (client_script 'x') ou une
+  // reference a un fichier retire. "client_scripts {" n'entre dans aucun cas.
   const active = maniOut.split('\n').filter((l) => {
     const t = l.trim();
     if (t.indexOf('--') === 0) return false;
-    return /client_script|activate_ipl|Elevator/.test(t);
+    return /(client|server|shared)_scripts?\s+['"]/.test(t) || /activate_ipl|Elevator/.test(t);
   });
   check('manifeste : plus aucune reference active', active.length === 0, active.join(' | '));
   check('manifeste : directive orpheline commentee', /^-- retire[^\n]*Elevator/m.test(maniOut));
