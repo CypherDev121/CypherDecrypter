@@ -1,35 +1,25 @@
 /* compat.js — correctifs et options charges apres les autres modules.
 
-   Pourquoi ce fichier existe : js/app.js et js/lua54.js sont retelescharges
-   depuis la source publiee a chaque synchronisation. Une correction ecrite
-   directement dedans serait ecrasee au push suivant. Les correctifs vivent
-   donc ici, dans un fichier qui n'est jamais retelecharge, et qui est injecte
-   dans index.html au moment du deploiement Pages.
+   app.js et lua54.js sont retelescharges depuis la source publiee a chaque
+   synchronisation : une correction ecrite dedans serait ecrasee. Tout vit donc
+   ici, et ce fichier est injecte dans index.html au deploiement Pages.
 
-   1. Lua54.parse n'existe pas dans l'API (seul parseChunk est exporte).
-      app.js l'appelle deux fois : un .lua compile, ou un bytecode compresse
-      dans un conteneur, levait une TypeError avalee par un catch vide, et le
-      fichier ressortait "non dechiffre".
-   2. AES-ECB etait implemente bloc par bloc via AES-CBC : WebCrypto retire le
-      remplissage PKCS#7 de chaque bloc, ce qui detruit le clair (et leve une
-      erreur des que le remplissage est invalide, donc presque toujours).
-   3. Option d'export : produire une archive sans aucun conteneur escrow.
-      L'export est intercepte au niveau de Zip.create, le seul point de
-      passage : les autres onglets n'exportent que du texte, la presence d'un
-      .lua non lisible signe donc l'export FXAP.
+   1. Lua54.parse n'existe pas (seul parseChunk est exporte) : app.js l'appelle
+      deux fois, la TypeError etait avalee par un catch vide.
+   2. AES-ECB passait par AES-CBC bloc par bloc : WebCrypto retire le
+      remplissage PKCS#7, ce qui detruit le clair et leve une erreur.
+   3. Option d'export sans escrow, interceptee au niveau de Zip.create.
 
-   Tout est rejoue au DOMContentLoaded, pour ne pas dependre de l'ordre des
-   balises script : Recover et Zip n'existent pas encore quand ce fichier est
-   evalue si sa balise est posee avant eux. */
+   Rejoue au DOMContentLoaded : Recover et Zip n'existent pas forcement quand
+   ce fichier est evalue. */
 (function (root) {
   'use strict';
 
   var doc = (typeof document !== 'undefined') ? document : null;
   var OPT = { removeEscrow: false };
+  var STORE = 'cypherdecrypter.noEscrow';
 
-  /* ================================================================ *
-   * 1. Alias : Lua54.parse -> Lua54.parseChunk
-   * ================================================================ */
+  /* ---------------- 1. alias Lua54.parse ---------------- */
   function fixParse() {
     try {
       if (root.Lua54 && typeof root.Lua54.parse !== 'function' &&
@@ -39,9 +29,11 @@
     } catch (e) { /* rien a corriger */ }
   }
 
-  /* ================================================================ *
-   * 2. AES-ECB : dechiffrement bloc par bloc sans perte
-   * ================================================================ */
+  /* ---------------- 2. AES-ECB sans perte ----------------
+     CBC sur tout le tampon donne P_i = D(C_i) XOR C_(i-1), donc
+     D(C_i) = P_i XOR C_(i-1) redonne le bloc ECB. Le remplissage PKCS#7 est
+     verifie sur le dernier bloc : on ajoute un bloc de queue dont le clair est
+     force a 0x10 x 16, donc X = E(C_n XOR 0x10 x 16). */
   function webcrypto() {
     return (root.crypto && root.crypto.subtle) ? root.crypto.subtle : null;
   }
@@ -50,16 +42,6 @@
     return b[i] === 0x1b && b[i + 1] === 0x4c && b[i + 2] === 0x75 && b[i + 3] === 0x61;
   }
 
-  /* Clair ECB complet, ou null.
-
-     WebCrypto n'expose pas AES-ECB. On passe donc par AES-CBC avec un IV nul
-     sur tout le tampon : CBC donne P_i = D(C_i) XOR C_(i-1), donc
-     D(C_i) = P_i XOR C_(i-1) redonne exactement le bloc ECB. Le seul obstacle
-     est le remplissage PKCS#7, verifie sur le dernier bloc seulement. On
-     ajoute donc un bloc de queue dont on choisit le clair : il faut que
-     D(X) XOR C_n = 0x10 x 16 (remplissage complet, toujours accepte), soit
-     D(X) = C_n XOR 0x10 x 16, donc X = E(C_n XOR 0x10 x 16). E() s'obtient
-     avec le meme chiffrement en CBC sur ce seul bloc. */
   async function ecbPlain(input, key) {
     var subtle = webcrypto();
     if (!subtle) return null;
@@ -71,9 +53,7 @@
 
     try {
       k = await subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt', 'encrypt']);
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
 
     var last = body.subarray(len - 16);
     var tailPlain = new Uint8Array(16);
@@ -82,9 +62,7 @@
     var sealed;
     try {
       sealed = new Uint8Array(await subtle.encrypt({ name: 'AES-CBC', iv: zero }, k, tailPlain));
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
     if (sealed.length < 16) return null;
 
     var buf = new Uint8Array(len + 16);
@@ -94,9 +72,7 @@
     var raw;
     try {
       raw = new Uint8Array(await subtle.decrypt({ name: 'AES-CBC', iv: zero }, k, buf));
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
     if (raw.length < len) return null;
 
     var out = new Uint8Array(len);
@@ -159,9 +135,7 @@
                   mode: 'ECB',
                   ivLabel: 'sans IV'
                 };
-              } catch (e) {
-                lastError = e.message;
-              }
+              } catch (e) { lastError = e.message; }
             }
           }
         }
@@ -172,12 +146,10 @@
             (lastError ? ' (' + lastError + ')' : '')
         };
       };
-    } catch (e) { /* on laisse les modules d'origine intacts */ }
+    } catch (e) { /* modules d'origine intacts */ }
   }
 
-  /* ================================================================ *
-   * 3. Detection des conteneurs escrow
-   * ================================================================ */
+  /* ---------------- 3. detection des conteneurs escrow ---------------- */
   function entropyOf(b) {
     var n = Math.min(b.length, 8192);
     if (!n) return 0;
@@ -215,11 +187,9 @@
     return hasFxapMarker(b) || entropyOf(b) > 7.4;
   }
 
-  /* Variante texte : selon l'export, un conteneur peut arriver deja decode en
-     chaine (latin-1 ou UTF-8 permissif). Un source Lua normal n'a que des
-     tabulations, retours a la ligne et du texte : il ne contient ni marqueur
-     FXAP, ni caractere de remplacement, ni caractere de controle. Les accents
-     UTF-8 restent du texte et ne declenchent donc rien. */
+  /* Variante texte : un conteneur peut arriver deja decode en chaine. Une
+     source Lua n'a ni marqueur FXAP, ni caractere de remplacement, ni
+     caractere de controle ; les accents UTF-8 restent du texte. */
   function isEscrowText(t) {
     if (typeof t !== 'string' || t.length < 32) return false;
     if (t.slice(0, 4) === '\u001bLua') return false;
@@ -236,8 +206,6 @@
     return ctrl / n > 0.02;
   }
 
-  /* Un conteneur escrow : script .lua ou .fxap dont la charge utile n'est ni du
-     bytecode ni du texte lisible, en octets comme en chaine. */
   function isEscrowEntry(entry) {
     if (!entry) return false;
     var name = String(entry.path || '');
@@ -247,16 +215,16 @@
     return false;
   }
 
-  /* ================================================================ *
-   * 4. Nettoyage du fxmanifest
-   * ================================================================ */
-  /* Retire les references aux fichiers supprimes, sans casser la syntaxe.
-     Trois cas :
-       - l'entree est dans une table sur une ligne partagee : on l'efface ;
-       - l'entree occupait seule sa ligne : la ligne devient vide (une virgule
-         orpheline entre { et } serait une erreur de syntaxe Lua) ;
-       - la ligne etait une directive a une seule entree (client_script 'x') :
-         on commente la ligne entiere. */
+  /* En mode sans escrow, le .fxap de la ressource part toujours : c'est le
+     manifeste du conteneur, sans objet quand les scripts chiffres sont retires.
+     Il ne doit donc plus etre signale comme un fichier illisible a relancer. */
+  function isEscrowForRemoval(entry) {
+    if (isEscrowEntry(entry)) return true;
+    var name = String((entry && entry.path) || '');
+    return /(^|\/)[^/]*\.fxap$/i.test(name);
+  }
+
+  /* ---------------- 4. nettoyage du fxmanifest ---------------- */
   function stripManifest(text, names, total) {
     if (typeof text !== 'string') return text;
 
@@ -289,7 +257,6 @@
       return '';
     }).join('\n');
 
-    // Filet de securite : plus aucune table ne doit commencer par une virgule.
     out = out.replace(/\{[ \t]*,[ \t]*/g, '{').replace(/\n[ \t]*,[ \t]*\n/g, '\n');
 
     var count = total || removed;
@@ -297,21 +264,20 @@
       'les scripts correspondants ne sont plus charges.\n' + out;
   }
 
-  /* ================================================================ *
-   * 5. Rapports ajoutes dans l'archive
-   * ================================================================ */
+  /* ---------------- 5. rapports de l'archive ---------------- */
   function escrowReport(names) {
     var lines = [];
     lines.push('CypherDecrypter - export sans escrow');
     lines.push('');
-    lines.push(names.length + ' fichier(s) chiffre(s) par FXAP ont ete retires de cette archive :');
+    lines.push(names.length + ' fichier(s) escrow ont ete retires de cette archive :');
     names.forEach(function (n) { lines.push('- ' + n); });
     lines.push('');
     lines.push('Ce que cela implique, fichier par fichier :');
     lines.push('- leur contenu etait chiffre avec une cle detenue par la plateforme : il n\'a pas ete dechiffre, il a ete ecarte ;');
     lines.push('- les fonctions qu\'ils portaient (elevateurs, chargement d\'IPL, interaction, entitysets) ne sont plus chargees par FiveM ;');
     lines.push('- les lignes correspondantes ont ete retirees des fxmanifest.lua de l\'archive, pour qu\'aucun fichier manquant ne soit reclame au demarrage ;');
-    lines.push('- les assets de la map (stream, .ymap, .ytyp) ne sont pas chiffres et restent intacts.');
+    lines.push('- les assets de la map (stream, .ymap, .ytyp) ne sont pas chiffres et restent intacts ;');
+    lines.push('- le .fxap de la ressource (manifeste du conteneur) est retire aussi : sans les scripts chiffres il ne sert plus a rien.');
     lines.push('');
     lines.push('Pour recuperer ces scripts, il faut la version non escrow fournie par l\'auteur de la ressource.');
     return lines.join('\n') + '\n';
@@ -330,15 +296,41 @@
     lines.push('');
     lines.push('Pour obtenir une archive sans aucun fichier escrow, cochez l\'option');
     lines.push('"Produire une archive sans aucun fichier escrow" dans l\'onglet');
-    lines.push('Clean FXAP & Mapping et relancez l\'export : les conteneurs seront retires');
-    lines.push('et les fxmanifest nettoyes. Les scripts concernes ne seront plus charges');
-    lines.push('par FiveM, la map et son stream resteront intacts.');
+    lines.push('Clean FXAP & Mapping et relancez l\'export. Le choix est memorise pour');
+    lines.push('les exports suivants.');
     return lines.join('\n') + '\n';
   }
 
-  /* ================================================================ *
-   * 6. Interception de l'export
-   * ================================================================ */
+  /* Le rapport produit par app.js decrit l'archive qu'il croyait ecrire : il
+     annonce les conteneurs recopies et reclame un nouvel essai pour le .fxap
+     illisible. En mode sans escrow, ces deux phrases sont fausses. On les
+     remplace par l'etat reel de l'archive. */
+  function rewriteFxapReport(text, stats) {
+    if (typeof text !== 'string') return text;
+    if (!stats || !stats.removed) return text;
+
+    var touched = false;
+    var out = text.split(/\r?\n/).map(function (line) {
+      var t = line.trim();
+      if (/conteneur\(s\) FXAP encore chiffr/i.test(t)) {
+        touched = true;
+        return 'Aucun conteneur FXAP chiffre ne reste dans cette archive : ' + stats.removed +
+          ' fichier(s) escrow ont ete retires' +
+          (stats.fxap ? ' (dont le .fxap de la ressource)' : '') +
+          '. La liste exacte figure dans ESCROW-RETIRE.txt.';
+      }
+      if (/ne peuvent pas [e\u00ea]tre export[\u00e9e]s/i.test(t)) {
+        touched = true;
+        return 'Aucun fichier utile n\'a ete perdu : les .fxap et les conteneurs illisibles ' +
+          'font partie du conteneur escrow et sont sans objet dans une archive sans escrow.';
+      }
+      return line;
+    }).join('\n');
+
+    return touched ? out : text;
+  }
+
+  /* ---------------- 6. interception de l'export ---------------- */
   function fixExport() {
     try {
       var Z = root.Zip;
@@ -354,24 +346,35 @@
           var kept = [];
           var dropped = [];
           for (var i = 0; i < files.length; i++) {
-            if (isEscrowEntry(files[i])) dropped.push(files[i]);
-            else kept.push(files[i]);
+            var f = files[i];
+            var drop = OPT.removeEscrow ? isEscrowForRemoval(f) : isEscrowEntry(f);
+            if (drop) dropped.push(f); else kept.push(f);
           }
           if (!dropped.length) return originalCreate.apply(Z, arguments);
 
-          /* Option desactivee : la liste d'origine est ecrite telle quelle (les
-             conteneurs sont conserves) et une note explique la situation. */
+          /* Option desactivee : liste d'origine ecrite telle quelle. */
           if (!OPT.removeEscrow) {
             return originalCreate.call(Z, files.concat([
               { path: 'ESCROW-INFO.txt', text: escrowInfo(dropped) }
             ]), opts);
           }
 
-          var names = dropped.map(function (f) { return String(f.path); });
+          var names = dropped.map(function (x) { return String(x.path); });
+          var stats = { removed: names.length, fxap: false };
+          for (var d = 0; d < dropped.length; d++) {
+            if (/\.fxap$/i.test(String(dropped[d].path))) stats.fxap = true;
+          }
 
-          var cleaned = kept.map(function (f) {
-            if (!/(^|\/)fxmanifest\.lua$/i.test(String(f.path)) || typeof f.text !== 'string') return f;
-            return { path: f.path, text: stripManifest(f.text, names, names.length) };
+          var cleaned = kept.map(function (x) {
+            var p = String(x.path || '');
+            if (/(^|\/)fxmanifest\.lua$/i.test(p) && typeof x.text === 'string') {
+              return { path: x.path, text: stripManifest(x.text, names, names.length) };
+            }
+            if (typeof x.text === 'string') {
+              var rw = rewriteFxapReport(x.text, stats);
+              if (rw !== x.text) return { path: x.path, text: rw };
+            }
+            return x;
           });
 
           cleaned.push({ path: 'ESCROW-RETIRE.txt', text: escrowReport(names) });
@@ -383,9 +386,24 @@
     } catch (e) { /* export d'origine conserve */ }
   }
 
-  /* ---------------------------------------------------------------- *
-   * Interface : case a cocher dans l'onglet Clean FXAP & Mapping
-   * ---------------------------------------------------------------- */
+  /* ---------------- 7. interface ---------------- */
+  function loadPref() {
+    try {
+      if (root.localStorage && root.localStorage.getItem(STORE) === '1') OPT.removeEscrow = true;
+    } catch (e) { /* stockage indisponible */ }
+  }
+
+  function savePref(on) {
+    try {
+      if (root.localStorage) root.localStorage.setItem(STORE, on ? '1' : '0');
+    } catch (e) { /* stockage indisponible */ }
+  }
+
+  function paint(box, cb) {
+    box.style.borderColor = cb.checked ? 'rgba(120, 220, 160, 0.75)' : 'rgba(120, 170, 255, 0.45)';
+    box.style.background = cb.checked ? 'rgba(120, 220, 160, 0.10)' : 'rgba(120, 170, 255, 0.07)';
+  }
+
   function installUi() {
     if (!doc || doc.getElementById('fxap-no-escrow')) return;
     var dz = doc.getElementById('dz-fxap');
@@ -408,6 +426,7 @@
     var cb = doc.createElement('input');
     cb.type = 'checkbox';
     cb.id = 'fxap-no-escrow';
+    cb.checked = OPT.removeEscrow;
     cb.style.marginTop = '3px';
     cb.style.flex = '0 0 auto';
 
@@ -421,37 +440,41 @@
     var detail = doc.createElement('span');
     detail.style.display = 'block';
     detail.style.opacity = '0.85';
-    detail.textContent = 'Les conteneurs chiffres sont retires de l\'archive et le fxmanifest est ' +
-      'nettoye : aucun .lua escrow ne reste dedans. Les scripts concernes ne seront ' +
-      'plus charges par FiveM (elevateurs, chargement d\'IPL, interaction, entitysets) ; ' +
-      'la map et son stream restent intacts. Le detail figure dans ESCROW-RETIRE.txt. ' +
-      'Laissee decochee, l\'archive garde les conteneurs et ajoute ESCROW-INFO.txt. ' +
-      'Rien ne peut dechiffrer un conteneur escrow sans la cle de l\'auteur : cette ' +
-      'option retire les fichiers, elle ne les dechiffre pas.';
+    detail.textContent = 'Les conteneurs chiffres et le .fxap de la ressource sont retires de ' +
+      'l\'archive, les fxmanifest sont nettoyes : aucun fichier escrow ne reste dedans. ' +
+      'Les scripts concernes ne seront plus charges par FiveM (elevateurs, chargement ' +
+      'd\'IPL, interaction, entitysets) ; la map et son stream restent intacts. Detail ' +
+      'dans ESCROW-RETIRE.txt. Le choix est memorise. Rien ne peut dechiffrer un ' +
+      'conteneur escrow sans la cle de l\'auteur : cette option retire les fichiers, ' +
+      'elle ne les dechiffre pas.';
 
     text.appendChild(title);
     text.appendChild(detail);
 
     cb.addEventListener('change', function () {
       OPT.removeEscrow = !!cb.checked;
-      box.style.borderColor = cb.checked ? 'rgba(120, 220, 160, 0.75)' : 'rgba(120, 170, 255, 0.45)';
-      box.style.background = cb.checked ? 'rgba(120, 220, 160, 0.10)' : 'rgba(120, 170, 255, 0.07)';
+      savePref(OPT.removeEscrow);
+      paint(box, cb);
     });
 
     label.appendChild(cb);
     label.appendChild(text);
     box.appendChild(label);
     dz.parentNode.insertBefore(box, dz.nextSibling);
+    paint(box, cb);
   }
 
-  /* ================================================================ *
-   * Application (idempotente, rejouable apres chargement des modules)
-   * ================================================================ */
+  /* ---------------- application ---------------- */
   function apply() {
+    loadPref();
     fixParse();
     fixEcb();
     fixExport();
     installUi();
+    if (doc) {
+      var cb = doc.getElementById('fxap-no-escrow');
+      if (cb) cb.checked = OPT.removeEscrow;
+    }
   }
 
   try {
@@ -460,12 +483,14 @@
     if (root.addEventListener) root.addEventListener('load', apply);
   } catch (e) { /* le site reste fonctionnel sans les correctifs */ }
 
-  /* Surface exposee pour les tests automatises. */
   root.CypherEscrow = {
     isEscrowEntry: isEscrowEntry,
     isEscrowBytes: isEscrowBytes,
     isEscrowText: isEscrowText,
+    isEscrowForRemoval: isEscrowForRemoval,
     stripManifest: stripManifest,
-    set: function (on) { OPT.removeEscrow = !!on; return OPT.removeEscrow; }
+    rewriteFxapReport: rewriteFxapReport,
+    set: function (on) { OPT.removeEscrow = !!on; return OPT.removeEscrow; },
+    get: function () { return OPT.removeEscrow; }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
