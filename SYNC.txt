@@ -40,9 +40,9 @@ reference ok : js/sanitize.js
 reference ok : js/zip.js
 
 Arborescence finale (octets, chemin) :
-    2781  .github/workflows/pages.yml
+    2875  .github/workflows/pages.yml
     5531  .github/workflows/sync-site.yml
-    4749  .github/workflows/verify-decrypt.yml
+    6715  .github/workflows/verify-decrypt.yml
      257  .gitignore
     2086  CHANGELOG.md
     3983  README.md
@@ -56,7 +56,7 @@ Arborescence finale (octets, chemin) :
    11789  js/accounts.js
    21826  js/anti.js
   128262  js/app.js
-    6166  js/compat.js
+   14224  js/compat.js
    40225  js/decompile.js
     7699  js/deobf.js
     6405  js/fxap.js
