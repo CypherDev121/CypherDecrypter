@@ -67,4 +67,4 @@ Arborescence finale (octets, chemin) :
    12466  js/recover.js
    10439  js/sanitize.js
     7553  js/zip.js
-    7058  tests/verify-decrypt.cjs
+    8206  tests/verify-decrypt.cjs
