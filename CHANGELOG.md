@@ -3,7 +3,26 @@
 Toutes les versions notables de CypherDecrypter.
 Format [SemVer](https://semver.org/lang/fr/).
 
-La version affichee sur le site est **injectee depuis le fichier `VERSION`** par le workflow de synchronisation : il suffit de modifier `VERSION` (et ce changelog) pour que le badge suive au prochain passage.
+Le fichier `VERSION`, `package.json` et `src-tauri/tauri.conf.json` portent la meme version : il suffit de les aligner (et ce changelog) pour publier.
+
+## [7.0.0] - 2026-11-20
+
+### Ajoute
+
+- **Application de bureau Windows** via Tauri 2 : la boite a outils tourne dans une vraie fenetre native, installee par `CypherDecrypter_x64-setup.exe` (NSIS, installation par utilisateur, sans droits admin).
+- **Mises a jour automatiques** : `tauri-plugin-updater` interroge les releases GitHub au lancement, propose la mise a jour avec barre de progression, installe en mode passif et relance l'app. Artefacts signes (cle minisign generee par `tauri signer generate`).
+- **Enregistrement natif des exports** : les .lua et .zip produits passent par la boite de dialogue « Enregistrer sous » de Windows au lieu du telechargement navigateur (repli navigateur conserve pour la version web).
+- Barre de titre personnalisee (reduire / agrandir / fermer) sur la fenetre sans bordures.
+- Workflow `release.yml` : sur un tag `v*`, build Windows, signature des artefacts et publication de la release avec `latest.json` pour l'updater.
+
+### Modifie
+
+- Le frontend est desormais compile par **Vite + TypeScript** : `src/main.ts` charge les 13 modules `js/` dans l'ordre historique, `src/setup.ts` isole tout le code Tauri. Le site GitHub Pages (`pages.yml`) deploye le meme build `dist/`.
+- Les assets `assets/` passent sous `public/` pour etre recopies tels quels dans le build.
+
+### Supprime
+
+- Workflow `sync-site.yml` et `SYNC.txt` : le depot est desormais la source de verite, plus de retelechargement nocturne depuis l'ancien site Freebuff.
 
 ## [6.2.0] - 2026-11-09
 

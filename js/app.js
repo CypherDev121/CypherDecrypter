@@ -105,6 +105,7 @@
 
   function download(name, text) {
     var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    if (window.CypherBridge && window.CypherBridge.save) { window.CypherBridge.save(name, blob); return; }
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
@@ -804,10 +805,12 @@
 
   function downloadRaw(name, bytes) {
     var blob = new Blob([bytes], { type: 'application/octet-stream' });
+    var out = String(name).split('/').pop() || 'asset.bin';
+    if (window.CypherBridge && window.CypherBridge.save) { window.CypherBridge.save(out, blob); return; }
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = String(name).split('/').pop() || 'asset.bin';
+    a.download = out;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -2623,6 +2626,7 @@
   function downloadZip(files, archiveName) {
     var bytes = Zip.create(files, { comment: 'Nettoyé par CypherDecrypter' });
     var blob = new Blob([bytes], { type: 'application/zip' });
+    if (window.CypherBridge && window.CypherBridge.save) { window.CypherBridge.save(archiveName, blob); return; }
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
@@ -3005,10 +3009,12 @@
 
     var bytes = Zip.create(files, { comment: 'Nettoyé par CypherDecrypter' });
     var blob = new Blob([bytes], { type: 'application/zip' });
+    var outName = 'CypherDecrypter-clean-' + stampDate() + '.zip';
+    if (window.CypherBridge && window.CypherBridge.save) { window.CypherBridge.save(outName, blob); return; }
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'CypherDecrypter-clean-' + stampDate() + '.zip';
+    a.download = outName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

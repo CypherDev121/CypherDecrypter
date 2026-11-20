@@ -1,0 +1,63 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "CypherDecrypter",
+  "version": "7.0.0",
+  "identifier": "com.cypherdev.decrypter",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CypherDecrypter",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 960,
+        "minHeight": 620,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "publisher": "CypherDev",
+    "copyright": "© 2026 CypherDev",
+    "shortDescription": "Boîte à outils Lua 5.4 pour FiveM",
+    "longDescription": "Analyse, désassemblage et reconstruction de source depuis le bytecode Lua 5.4 des ressources FiveM. Audit anti-backdoor, nettoyage FXAP et NUI, désobfuscation — tout en local.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["French", "English"],
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZFNENFRDc5MjY1REE3MjUKUldRbHAxMG1lZTFNL3V6aS9hNktZbG1lNS9mbFhVQ2J4emlnYTlXcjNQRXB3QkViU3UrclJ0S0IK",
+      "endpoints": [
+        "https://github.com/CypherDev121/CypherDecrypter/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

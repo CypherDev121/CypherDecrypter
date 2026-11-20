@@ -1,0 +1,58 @@
+name: release
+
+# Build Windows de l'application de bureau Tauri : compile le frontend Vite,
+# compile le binaire Rust, produit l'installateur NSIS (.exe) signe pour
+# l'auto-update, puis publie tout sur une release GitHub.
+#
+# Declenchement :
+#   - push d'un tag  v*        (ex. git tag v7.0.1 && git push --tags)
+#   - manuel (Actions > release) : cree le tag depuis la version tauri.conf.json
+#
+# Secrets requis dans le depot (Settings > Secrets and variables > Actions) :
+#   TAURI_SIGNING_PRIVATE_KEY          contenu de %USERPROFILE%\.tauri\cypherdecrypter.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD contenu de %USERPROFILE%\.tauri\cypherdecrypter.key.password
+#
+# La release sort en brouillon : verifier puis publier. Des sa publication,
+# releases/latest/download/latest.json sert l'auto-update des clients installes.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installer Rust (stable MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Dependances frontend
+        run: npm ci
+
+      - name: Build Tauri + publication de la release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'CypherDecrypter v__VERSION__'
+          releaseBody: 'Voir le [CHANGELOG](CHANGELOG.md).'
+          releaseDraft: true
+          prerelease: false
+          args: --bundles nsis
