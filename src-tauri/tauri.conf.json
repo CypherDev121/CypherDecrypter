@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "CypherDecrypter",
-  "version": "7.0.4",
+  "version": "7.0.5",
   "identifier": "com.cypherdev.decrypter",
   "build": {
     "frontendDist": "../dist",
