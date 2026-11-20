@@ -20,6 +20,9 @@ concurrency:
 
 jobs:
   deploy:
+    # GitHub Pages exige un depot public (ou un plan payant). Tant que le
+    # depot est prive, le job est ignore proprement au lieu d'echouer.
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     environment:
       name: github-pages
