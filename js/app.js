@@ -2453,7 +2453,7 @@
       var pre = document.createElement('pre');
       pre.className = 'code code-box';
       pre.hidden = true;
-      pre.textContent = stampLua(result.res);
+      pre.textContent = stampLua(result.res, result.path);
 
       if (result.res.log.length) {
         var log = document.createElement('ol');
@@ -2498,7 +2498,7 @@
       });
       dl.addEventListener('click', function () {
         var base = srcBaseName(String(result.path).split(' › ').pop());
-        download(base + '.clean.lua', stampLua(result.res));
+        download(base + '.clean.lua', stampLua(result.res, result.path));
       });
       actions.appendChild(view);
       actions.appendChild(dl);
@@ -2637,11 +2637,27 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
   }
 
-  function stampLua(res) {
+  function stampLua(res, path) {
     var when = new Date().toLocaleString('fr-FR');
-    var head = '-- Nettoyé par CypherDecrypter · AntiCleanLUA · ' + when +
+    var line = 'Nettoyé par CypherDecrypter · AntiCleanLUA · ' + when +
       ' · ' + res.stats.renames + ' renommage(s), ' + res.stats.removedLines + ' ligne(s) retirée(s)';
-    return head + '\n-- Fichier généré : relisez-le avant de remplacer l’original.\n\n' + res.code;
+    var note = 'Fichier généré : relisez-le avant de remplacer l’original.';
+    var ext = (/\.([a-z0-9]+)$/i.exec(String(path || (res && res.path) || '')) || [])[1];
+    ext = (ext || 'lua').toLowerCase();
+    if (ext === 'js' || ext === 'mjs' || ext === 'cjs' || ext === 'ts') {
+      return '// ' + line + '\n// ' + note + '\n\n' + res.code;
+    }
+    if (ext === 'css' || ext === 'scss' || ext === 'less') {
+      return '/* ' + line + ' */\n/* ' + note + ' */\n\n' + res.code;
+    }
+    if (ext === 'html' || ext === 'htm') {
+      var header = '<!-- ' + line + ' — ' + note + ' -->\n';
+      var doctype = /^\s*<!doctype[^>]*>\s*/i.exec(res.code);
+      if (doctype) return doctype[0].replace(/\s+$/, '') + '\n' + header + res.code.slice(doctype[0].length);
+      return header + res.code;
+    }
+    if (ext !== 'lua') return res.code; // json, md, ymap… : aucun tampon, la syntaxe casserait
+    return '-- ' + line + '\n-- ' + note + '\n\n' + res.code;
   }
 
   function exportLuaZip(results) {
@@ -2665,7 +2681,7 @@
           : path + '-' + used[path];
       }
       used[path] = (used[path] || 1) + 1;
-      files.push({ path: path, text: stampLua(r.res) });
+      files.push({ path: path, text: stampLua(r.res, r.path) });
       lines.push('- ' + path + '  ' + r.res.stats.renames + ' renommage(s), ' +
         r.res.stats.removedLines + ' ligne(s) retirée(s), ' +
         fmtBytes(r.res.stats.beforeBytes) + ' → ' + fmtBytes(r.res.stats.afterBytes));
