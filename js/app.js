@@ -2012,8 +2012,9 @@
        on interroge le jeton puis le profil. Client ID public de l'OAuth app. */
     var GITHUB_CLIENT_ID = 'Ov23liZtDYCCxZcQSMfB';
     function githubDeviceLogin() {
+      var httpFetch = window.cypherFetch || fetch;
       say('Demande du code de connexion GitHub…');
-      fetch('https://github.com/login/device/code', {
+      httpFetch('https://github.com/login/device/code', {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, scope: 'read:user' })
@@ -2029,7 +2030,7 @@
         var wait = (d.interval || 5) * 1000, deadline = Date.now() + (d.expires_in || 900) * 1000;
         (function poll() {
           if (Date.now() > deadline) return say('Code expiré : recommencez la connexion GitHub.', true);
-          fetch('https://github.com/login/oauth/access_token', {
+          httpFetch('https://github.com/login/oauth/access_token', {
             method: 'POST',
             headers: { 'content-type': 'application/json', accept: 'application/json' },
             body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, device_code: d.device_code, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' })
@@ -2037,7 +2038,7 @@
             if (t.error === 'authorization_pending') return setTimeout(poll, wait);
             if (t.error === 'slow_down') { wait += 5000; return setTimeout(poll, wait); }
             if (t.error) return say('GitHub : ' + (t.error_description || t.error), true);
-            fetch('https://api.github.com/user', { headers: { authorization: 'Bearer ' + t.access_token, accept: 'application/json' } })
+            httpFetch('https://api.github.com/user', { headers: { authorization: 'Bearer ' + t.access_token, accept: 'application/json' } })
               .then(function (r) { return r.json(); }).then(function (u) {
                 fbUser = { name: u.name || u.login, email: u.email || (u.login + '@github'), provider: 'github', avatar: u.avatar_url };
                 renderHeader(); renderMe(fbUser); show('me');

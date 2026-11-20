@@ -173,6 +173,11 @@ window.CypherBridge = { isTauri, save: saveBlob };
 if (isTauri) {
   (window as any).checkForUpdates = checkForUpdates;
 
+// Fetch réseau sans CORS (GitHub OAuth dans la WebView) — repli fetch normal.
+import('@tauri-apps/plugin-http').then((m) => {
+  (window as any).cypherFetch = m.fetch;
+}).catch(() => { /* navigateur : fetch standard */ });
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Badge = version réellement installée (synchro, pas de F5 nécessaire).
   try {
