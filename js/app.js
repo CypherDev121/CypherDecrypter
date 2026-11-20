@@ -2007,9 +2007,50 @@
       b.addEventListener('click', function () { show(b.dataset.go); });
     });
 
+    /* Connexion GitHub par Device Flow : aucun serveur ni secret requis.
+       L'app demande un code, l'utilisateur le valide sur github.com/login/device,
+       on interroge le jeton puis le profil. Client ID public de l'OAuth app. */
+    var GITHUB_CLIENT_ID = 'Ov23liZtDYCCxZcQSMfB';
+    function githubDeviceLogin() {
+      say('Demande du code de connexion GitHub…');
+      fetch('https://github.com/login/device/code', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, scope: 'read:user' })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.device_code) throw new Error(d.error_description || 'device-refused');
+        say('Code : ' + d.user_code + ' — la page GitHub s’ouvre, validez-le.');
+        var url = d.verification_uri || 'https://github.com/login/device';
+        try {
+          if (window.__TAURI__ && window.__TAURI__.shell && window.__TAURI__.shell.open) {
+            window.__TAURI__.shell.open(url + '?user_code=' + encodeURIComponent(d.user_code));
+          } else window.open(url, '_blank');
+        } catch (e) { window.open(url, '_blank'); }
+        var wait = (d.interval || 5) * 1000, deadline = Date.now() + (d.expires_in || 900) * 1000;
+        (function poll() {
+          if (Date.now() > deadline) return say('Code expiré : recommencez la connexion GitHub.', true);
+          fetch('https://github.com/login/oauth/access_token', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, device_code: d.device_code, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' })
+          }).then(function (r) { return r.json(); }).then(function (t) {
+            if (t.error === 'authorization_pending') return setTimeout(poll, wait);
+            if (t.error === 'slow_down') { wait += 5000; return setTimeout(poll, wait); }
+            if (t.error) return say('GitHub : ' + (t.error_description || t.error), true);
+            fetch('https://api.github.com/user', { headers: { authorization: 'Bearer ' + t.access_token, accept: 'application/json' } })
+              .then(function (r) { return r.json(); }).then(function (u) {
+                fbUser = { name: u.name || u.login, email: u.email || (u.login + '@github'), provider: 'github', avatar: u.avatar_url };
+                renderHeader(); renderMe(fbUser); show('me');
+              });
+          }).catch(function () { say('Réseau : impossible de joindre GitHub.', true); });
+        })();
+      }).catch(function (e) { say('GitHub indisponible : ' + e.message, true); });
+    }
+
     Array.prototype.forEach.call(overlay.querySelectorAll('[data-provider]'), function (b) {
       b.addEventListener('click', function () {
         var name = b.dataset.provider;
+        if (name === 'GitHub') { githubDeviceLogin(); return; }
         if (name === 'Microsoft') {
           say('Freebuff fédère Google, GitHub et Apple — pas Microsoft. Utilisez Freebuff, Google, GitHub ou l’adresse e-mail ci-dessous.', true);
           return;
