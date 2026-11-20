@@ -89,24 +89,35 @@ async function runUpdate(update: Update, toast: HTMLElement): Promise<void> {
   await relaunch();
 }
 
-async function checkForUpdates(): Promise<void> {
-  try {
-    const update = await check();
-    if (!update) return;
-
+function showToast(html: string, autoRemoveMs = 0): HTMLElement {
+  if (!document.querySelector('style[data-update-style]')) {
     const style = document.createElement('style');
+    style.setAttribute('data-update-style', '');
     style.textContent = UPDATE_STYLE;
     document.head.appendChild(style);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'update-toast';
+  toast.innerHTML = html;
+  document.body.appendChild(toast);
+  if (autoRemoveMs > 0) setTimeout(() => toast.remove(), autoRemoveMs);
+  return toast;
+}
 
-    const toast = document.createElement('div');
-    toast.className = 'update-toast';
-    toast.innerHTML =
+async function checkForUpdates(manual = false): Promise<void> {
+  try {
+    const update = await check();
+    if (!update) {
+      if (manual) showToast('<div class="u-label">Application à jour.</div>', 4000);
+      return;
+    }
+
+    const toast = showToast(
       `<div class="u-label">Mise à jour <b>v${update.version}</b> disponible` +
       ` (installée : v${update.currentVersion})</div>` +
       `<div class="u-bar"><div class="u-fill"></div></div>` +
       `<div class="u-actions"><button class="primary" type="button">Mettre à jour</button>` +
-      `<button type="button">Plus tard</button></div>`;
-    document.body.appendChild(toast);
+      `<button type="button">Plus tard</button></div>`);
 
     const [btnYes, btnNo] = Array.from(toast.querySelectorAll('button'));
     btnNo.addEventListener('click', () => toast.remove());
@@ -157,7 +168,9 @@ async function setupTitlebar(): Promise<void> {
 window.CypherBridge = { isTauri, save: saveBlob };
 
 if (isTauri) {
-  document.addEventListener('DOMContentLoaded', () => {
+  (window as any).checkForUpdates = checkForUpdates;
+
+document.addEventListener('DOMContentLoaded', () => {
     setupTitlebar().catch((e) => console.warn('titlebar:', e));
     checkForUpdates().catch((e) => console.warn('updater:', e));
   });

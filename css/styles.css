@@ -1742,3 +1742,6 @@ body::before { animation: aurora-drift 24s ease-in-out infinite alternate; }
 .tb-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
 .tb-close:hover { background: #e81123; color: #fff; }
 .titlebar ~ .topbar { top: 34px; }
+
+.update-btn{cursor:pointer;font:inherit;background:transparent;border:none;}
+.update-btn:hover{filter:brightness(1.2);}
