@@ -105,10 +105,13 @@ function showToast(html: string, autoRemoveMs = 0): HTMLElement {
 }
 
 async function checkForUpdates(manual = false): Promise<void> {
+  let checking: HTMLElement | null = null;
   try {
+    if (manual) checking = showToast('<div class="u-label">Vérification des mises à jour…</div>');
     const update = await check();
+    checking?.remove();
     if (!update) {
-      if (manual) showToast('<div class="u-label">Application à jour.</div>', 4000);
+      if (manual) showToast('<div class="u-label">✅ Application à jour.</div>', 4000);
       return;
     }
 
@@ -170,7 +173,16 @@ window.CypherBridge = { isTauri, save: saveBlob };
 if (isTauri) {
   (window as any).checkForUpdates = checkForUpdates;
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Badge = version réellement installée (synchro, pas de F5 nécessaire).
+  try {
+    const { getVersion } = await import('@tauri-apps/api/app');
+    const v = await getVersion();
+    document.querySelectorAll<HTMLElement>('[data-site-version]').forEach((el) => {
+      el.textContent = 'v' + v;
+      el.setAttribute('data-site-version', 'v' + v);
+    });
+  } catch { /* navigateur : garder le badge du site */ }
     setupTitlebar().catch((e) => console.warn('titlebar:', e));
     checkForUpdates().catch((e) => console.warn('updater:', e));
   });
