@@ -332,12 +332,9 @@
     <div class="auth-providers" id="auth-providers">
       <p class="auth-providers-label">Fournisseurs</p>
       <div class="auth-provider-grid">
-        <button class="provider" type="button" data-provider="Freebuff"><img class="provider-mark" src="assets/brand/freebuff.svg" alt="" width="20" height="20" />Freebuff</button>
-        <button class="provider" type="button" data-provider="Google"><img class="provider-mark" src="assets/brand/google.svg" alt="" width="20" height="20" />Google</button>
         <button class="provider" type="button" data-provider="GitHub"><img class="provider-mark" src="assets/brand/github.svg" alt="" width="20" height="20" />GitHub</button>
-        <button class="provider" type="button" data-provider="Microsoft" disabled title="Freebuff ne fédère que Google, GitHub et Apple"><img class="provider-mark" src="assets/brand/microsoft.svg" alt="" width="20" height="20" />Microsoft</button>
       </div>
-      <p class="auth-note">Connexion réelle par Freebuff, qui fédère Google, GitHub et Apple. Microsoft n’est pas proposé par Freebuff.</p>
+      <p class="auth-note">Connexion GitHub par code d’appareil : un code s’affiche, vous le validez sur github.com.</p>
     </div>
 
     <div class="auth-sep" id="auth-sep"><span>ou par e-mail</span></div>
@@ -389,7 +386,7 @@
         <span><b id="fb-name">—</b><br /><span class="auth-dim" id="fb-mail">—</span></span>
       </p>
       <p class="auth-dim">Connecté avec Freebuff — Google, GitHub ou Apple via votre compte Freebuff.</p>
-      <form method="post" action="/auth/freebuff/signout">
+      <form method="post" action="#">
         <button class="btn btn-ghost" type="submit">Se déconnecter</button>
       </form>
     </div>
