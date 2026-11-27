@@ -5,6 +5,14 @@ Format [SemVer](https://semver.org/lang/fr/).
 
 Le fichier `VERSION`, `package.json` et `src-tauri/tauri.conf.json` portent la meme version : il suffit de les aligner (et ce changelog) pour publier.
 
+## [7.0.7] - 2026-11-27
+
+### Ajoute
+
+- **Retrait des fichiers `escrow_ignore`** : le bloc du fxmanifest est parse et les fichiers en clair qu'il liste sont retires de l'archive sans escrow, en plus des conteneurs chiffres et du `.fxap`. La directive est commentee dans le manifeste nettoye ; `fxmanifest.lua`/`__resource.lua` ne sont jamais retires.
+- `ESCROW-RETIRE.txt` distingue desormais les conteneurs chiffres des fichiers en clair retires via `escrow_ignore`.
+- Tests de bout en bout sur une structure de ressource complete (manifest + fichiers chiffres + fichiers ignores + assets).
+
 ## [7.0.6] - 2026-11-26
 
 ### Corrige
