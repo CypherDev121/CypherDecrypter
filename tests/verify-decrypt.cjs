@@ -215,6 +215,48 @@ function check(name, cond, extra) {
   check('mode sans escrow : source lua non retiree', CE.isEscrowForRemoval({ path: 'client/x.lua', text: 'local a = 1\n' }) === false);
   check('rapport inchange hors escrow', CE.rewriteFxapReport('rien a corriger ici\n', { removed: 0 }) === 'rien a corriger ici\n');
 
+  /* ---------------- escrow_ignore : directive + fichiers retires ---------------- */
+  const axManifest = "fx_version 'cerulean'\nlua54 'yes'\n" +
+    "shared_scripts {\n  'shared/config.lua',\n  'shared/framework.lua',\n  'locales/*.lua',\n}\n" +
+    "client_scripts {\n  'client/activate_ipl.lua',\n}\n" +
+    "server_scripts {\n  'server/main.lua',\n}\n" +
+    "escrow_ignore {\n  'fxmanifest.lua',\n  'shared/config.lua',\n  'shared/framework.lua',\n  'install/ox_inventory.lua',\n}\n";
+
+  check('escrow_ignore : motifs extraits',
+    CE.parseEscrowIgnore(axManifest).length === 4, CE.parseEscrowIgnore(axManifest).join(','));
+
+  const zIgn = await ctx.Zip.entries(ctx.Zip.create([
+    escrowEntry,
+    { path: 'server/main.lua', bytes: encContainer },
+    { path: 'shared/config.lua', text: 'Config = {}\n' },
+    { path: 'shared/framework.lua', text: 'Framework = {}\n' },
+    { path: 'install/ox_inventory.lua', text: 'Items = {}\n' },
+    { path: 'locales/fr.lua', text: 'Locales = {}\n' },
+    { path: 'stream/a.ycd', bytes: encContainer },
+    { path: 'fxmanifest.lua', text: axManifest }
+  ], { comment: 'test' }));
+  const ignNames = zIgn.map((e) => e.name);
+
+  check('escrow_ignore : fichier chiffre retire', ignNames.indexOf('client/activate_ipl.lua') === -1, ignNames.join(', '));
+  check('escrow_ignore : fichier serveur chiffre retire', ignNames.indexOf('server/main.lua') === -1, ignNames.join(', '));
+  check('escrow_ignore : fichier en clair liste retire', ignNames.indexOf('shared/config.lua') === -1, ignNames.join(', '));
+  check('escrow_ignore : install retire', ignNames.indexOf('install/ox_inventory.lua') === -1, ignNames.join(', '));
+  check('escrow_ignore : fxmanifest conserve', ignNames.indexOf('fxmanifest.lua') !== -1, ignNames.join(', '));
+  check('escrow_ignore : locales conservees', ignNames.indexOf('locales/fr.lua') !== -1, ignNames.join(', '));
+  check('escrow_ignore : stream conserve', ignNames.indexOf('stream/a.ycd') !== -1, ignNames.join(', '));
+
+  const ignMani = zIgn.filter((e) => e.name === 'fxmanifest.lua')[0];
+  const ignText = ignMani && ignMani.data ? Buffer.from(ignMani.data).toString('utf8') : '';
+  check('escrow_ignore : bloc commente', /escrow_ignore sans objet/i.test(ignText), ignText.slice(0, 300));
+  check('escrow_ignore : plus de directive active', !/^[^-\n]*escrow_ignore/m.test(ignText), ignText.slice(0, 300));
+  check('escrow_ignore : shared_scripts nettoyes', !/^[^-\n]*shared\/config\.lua/m.test(ignText), ignText.slice(0, 300));
+
+  const ignRep = zIgn.filter((e) => e.name === 'ESCROW-RETIRE.txt')[0];
+  const ignRepText = ignRep && ignRep.data ? Buffer.from(ignRep.data).toString('utf8') : '';
+  check('escrow_ignore : rapport mentionne les fichiers ignores',
+    ignRepText.indexOf('escrow_ignore') !== -1 && ignRepText.indexOf('shared/config.lua') !== -1,
+    ignRepText.slice(0, 300));
+
   /* ---------------- desaccordement volontaire ---------------- */
   CE.set(false);
   const zOff = await ctx.Zip.entries(ctx.Zip.create([

@@ -230,9 +230,78 @@
     return /(^|\/)[^/]*\.fxap$/i.test(name);
   }
 
-  /* ---------------- 4. nettoyage du fxmanifest ---------------- */
+  /* ---------------- 4. bloc escrow_ignore ----------------
+     Dans un manifeste escrow, escrow_ignore liste les fichiers laisses en
+     clair. En export sans escrow on les retire aussi : l'utilisateur ne
+     veut garder ni le chiffre ni la version lisible des scripts. Le
+     fxmanifest lui-meme n'est jamais retire (la ressource mourrait). */
+  function parseEscrowIgnore(text) {
+    var globs = [];
+    if (typeof text !== 'string') return globs;
+    var re = /escrow_ignore\s*\{([^}]*)\}/g;
+    var m;
+    while ((m = re.exec(text))) {
+      var q = /['"]([^'"]+)['"]/g, mm;
+      while ((mm = q.exec(m[1]))) globs.push(mm[1]);
+    }
+    var re2 = /escrow_ignore\s+['"]([^'"]+)['"]/g;
+    while ((m = re2.exec(text))) globs.push(m[1]);
+    return globs;
+  }
+
+  /* Les motifs sont relatifs a la racine de la ressource ; le chemin de
+     l'entree peut etre prefixe (dossier depose, archive). On compare sur
+     le suffixe. '*' devient '.*'. */
+  function ignoreHit(path, globs) {
+    var p = '/' + String(path || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    for (var i = 0; i < globs.length; i++) {
+      var g = String(globs[i]);
+      if (/^(fxmanifest\.lua|__resource\.lua)$/i.test(g)) continue;
+      var rx = g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
+      if (new RegExp('/' + rx + '$', 'i').test(p)) return g;
+    }
+    return null;
+  }
+
+  function isEscrowIgnored(entry, globs) {
+    if (!entry || !globs || !globs.length) return false;
+    var p = String(entry.path || '');
+    if (/(^|\/)(fxmanifest|__resource)\.lua$/i.test(p)) return false;
+    return !!ignoreHit(p, globs);
+  }
+
+  /* Le bloc escrow_ignore est commente dans le manifeste nettoye : il ne
+     pointe que des fichiers retires et n'a plus d'objet hors escrow. */
+  function stripEscrowIgnore(text) {
+    var out = [];
+    var depth = 0;
+    var hit = false;
+    var lines = String(text).split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (!depth && /escrow_ignore/i.test(line)) {
+        hit = true;
+        depth = Math.max(0, (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length);
+        out.push('-- retire par CypherDecrypter (escrow_ignore sans objet hors escrow) : ' + line.trim());
+        continue;
+      }
+      if (depth) {
+        depth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+        if (depth < 0) depth = 0;
+        out.push(line.trim() ? '-- ' + line : '');
+        continue;
+      }
+      out.push(line);
+    }
+    return { text: out.join('\n'), hit: hit };
+  }
+
+  /* ---------------- 5. nettoyage du fxmanifest ---------------- */
   function stripManifest(text, names, total) {
     if (typeof text !== 'string') return text;
+
+    var ig = stripEscrowIgnore(text);
+    if (ig.hit) text = ig.text;
 
     var wanted = {};
     (names || []).forEach(function (p) {
@@ -271,12 +340,17 @@
   }
 
   /* ---------------- 5. rapports de l'archive ---------------- */
-  function escrowReport(names) {
+  function escrowReport(names, ignored) {
     var lines = [];
     lines.push('CypherDecrypter - export sans escrow (automatique)');
     lines.push('');
     lines.push(names.length + ' fichier(s) escrow ont ete retires de cette archive :');
     names.forEach(function (n) { lines.push('- ' + n); });
+    if (ignored && ignored.length) {
+      lines.push('');
+      lines.push(ignored.length + ' fichier(s) en clair listes par escrow_ignore ont aussi ete retires :');
+      ignored.forEach(function (n) { lines.push('- ' + n); });
+    }
     lines.push('');
     lines.push('Ce que cela implique, fichier par fichier :');
     lines.push('- leur contenu etait chiffre avec une cle detenue par la plateforme : il n\'a pas ete dechiffre, il a ete ecarte ;');
@@ -349,11 +423,23 @@
         try {
           if (!files || !files.length) return originalCreate.apply(Z, arguments);
 
+          /* Les fichiers listes par escrow_ignore dans le manifeste du lot
+             sont retires eux aussi (sans escrow = plus aucun script). */
+          var ignoreGlobs = [];
+          for (var gi = 0; gi < files.length; gi++) {
+            var fx = files[gi];
+            if (/(^|\/)fxmanifest\.lua$/i.test(String(fx.path)) && typeof fx.text === 'string') {
+              ignoreGlobs = ignoreGlobs.concat(parseEscrowIgnore(fx.text));
+            }
+          }
+
           var kept = [];
           var dropped = [];
           for (var i = 0; i < files.length; i++) {
             var f = files[i];
-            var drop = OPT.removeEscrow ? isEscrowForRemoval(f) : isEscrowEntry(f);
+            var drop = OPT.removeEscrow
+              ? (isEscrowForRemoval(f) || isEscrowIgnored(f, ignoreGlobs))
+              : isEscrowEntry(f);
             if (drop) dropped.push(f); else kept.push(f);
           }
           if (!dropped.length) return originalCreate.apply(Z, arguments);
@@ -365,7 +451,11 @@
             ]), opts);
           }
 
-          var names = dropped.map(function (x) { return String(x.path); });
+          var escrowNames = dropped.filter(function (x) { return !isEscrowIgnored(x, ignoreGlobs) || isEscrowForRemoval(x); })
+            .map(function (x) { return String(x.path); });
+          var ignoredNames = dropped.filter(function (x) { return isEscrowIgnored(x, ignoreGlobs) && !isEscrowForRemoval(x); })
+            .map(function (x) { return String(x.path); });
+          var names = escrowNames.concat(ignoredNames);
           var stats = { removed: names.length, fxap: false };
           for (var d = 0; d < dropped.length; d++) {
             if (/\.fxap$/i.test(String(dropped[d].path))) stats.fxap = true;
@@ -383,7 +473,7 @@
             return x;
           });
 
-          cleaned.push({ path: 'ESCROW-RETIRE.txt', text: escrowReport(names) });
+          cleaned.push({ path: 'ESCROW-RETIRE.txt', text: escrowReport(escrowNames, ignoredNames) });
           return originalCreate.call(Z, cleaned, opts);
         } catch (e) {
           return originalCreate.apply(Z, arguments);
@@ -503,6 +593,9 @@
     isEscrowBytes: isEscrowBytes,
     isEscrowText: isEscrowText,
     isEscrowForRemoval: isEscrowForRemoval,
+    isEscrowIgnored: isEscrowIgnored,
+    parseEscrowIgnore: parseEscrowIgnore,
+    stripEscrowIgnore: stripEscrowIgnore,
     stripManifest: stripManifest,
     rewriteFxapReport: rewriteFxapReport,
     set: function (on) { OPT.removeEscrow = !!on; return OPT.removeEscrow; },
