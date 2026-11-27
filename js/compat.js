@@ -99,7 +99,12 @@
       R.decrypt = async function (bytes, options) {
         options = options || {};
         var mode = options.mode || 'CBC';
-        if (mode !== 'ECB') return originalDecrypt.call(R, bytes, options);
+        /* un vrai conteneur FXAP relève des layouts embarqués (IV dans
+           l'en-tête) : on laisse Recover décider du mode, même si ECB est
+           demandé. */
+        var isFxap = bytes && bytes.length > 4 && bytes[0] === 0x46 && bytes[1] === 0x58 &&
+          bytes[2] === 0x41 && bytes[3] === 0x50;
+        if (mode !== 'ECB' || isFxap) return originalDecrypt.call(R, bytes, options);
 
         var Lua = options.lua || L;
         var key = options.key;

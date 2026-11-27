@@ -365,13 +365,14 @@
     Recover.decrypt(fxapBytes, { key: key, iv: iv, mode: mode, lua: Lua54 }).then(function (r) {
       out.textContent = '';
       if (!r.ok) {
-        out.textContent = 'Échec : ' + r.reason + '. La clé ne correspond pas à cette charge utile, ou le conteneur n\'utilise pas AES-' + mode + '.';
+        out.textContent = 'Échec : ' + r.reason + '. La clé ne correspond pas à cette charge utile.';
         return;
       }
-      var code = Lua54.decompile(r.parsed.main, { fileName: 'decrypted.luac' }).code;
+      var code = r.text != null ? r.text : Lua54.decompile(r.parsed.main, { fileName: 'decrypted.luac' }).code;
       var meta = document.createElement('p');
       meta.className = 'file-sub';
-      meta.textContent = 'Déchiffré · offset 0x' + r.offset.toString(16) + ' · AES-' + r.mode + ' · ' + r.ivLabel;
+      meta.textContent = 'Déchiffré · ' + (r.kind === 'source' ? 'source Lua' : 'bytecode décompilé') +
+        ' · offset 0x' + r.offset.toString(16) + ' · AES-' + r.mode + ' · ' + r.ivLabel;
       var dl = document.createElement('button');
       dl.type = 'button';
       dl.className = 'btn btn-primary';
@@ -968,14 +969,29 @@
       try {
         var d = await Recover.decrypt(bytes, { key: key.key, iv: key.iv, mode: key.mode, lua: Lua54 });
         if (d.ok) {
-          chunks.push({
-            transform: 'AES-' + d.mode + ' · offset 0x' + d.offset.toString(16),
-            offset: d.offset,
-            size: d.parsed.bytesUsed,
-            stats: Lua54.countStats(d.parsed.main),
-            code: Lua54.decompile(d.parsed.main, { fileName: 'decrypted' }).code,
-            decrypted: true
-          });
+          if (d.kind === 'source' && d.text != null) {
+            chunks.push({
+              transform: 'AES-' + d.mode + ' · offset 0x' + d.offset.toString(16) + ' · ' + d.ivLabel,
+              offset: d.offset,
+              size: d.data.length,
+              stats: null,
+              code: d.text,
+              decrypted: true,
+              lua: true,
+              ext: 'lua'
+            });
+          } else {
+            chunks.push({
+              transform: 'AES-' + d.mode + ' · offset 0x' + d.offset.toString(16),
+              offset: d.offset,
+              size: d.parsed.bytesUsed,
+              stats: Lua54.countStats(d.parsed.main),
+              code: Lua54.decompile(d.parsed.main, { fileName: 'decrypted' }).code,
+              decrypted: true,
+              lua: true,
+              ext: 'lua'
+            });
+          }
           return chunks;
         }
       } catch (e) {

@@ -119,6 +119,13 @@
         level: 'warn',
         text: 'En-tête FXAP présent : le fichier a été protégé par le système d\'escrow de la plateforme. La charge utile est chiffrée et la clé est dérivée côté plateforme, jamais stockée dans le fichier.'
       });
+      if (bytes.length >= 0x1a && bytes[0] === 0x46 && bytes[1] === 0x58 && bytes[2] === 0x41 && bytes[3] === 0x50) {
+        var ver = bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24);
+        report.findings.push({
+          level: 'info',
+          text: 'Structure FXAP v' + ver + ' : IV 16 octets à 0x0a, charge utile à 0x1a. La taille n\'est pas alignée sur 16 — chiffrement de flux (AES-CTR). Avec la clé escrow de la ressource, l\'IV est lue automatiquement.'
+        });
+      }
     } else if (report.isBytecode === false && /function|local |return |load\(/.test(ascii(bytes, 0, Math.min(bytes.length, 4096)))) {
       report.verdict = 'source';
       report.verdictLabel = 'Code source Lua (non compilé)';

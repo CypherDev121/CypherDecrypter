@@ -85,6 +85,48 @@ function check(name, cond, extra) {
   const rotCbc = await R.decrypt(cbcCipher, { key: keyBytes, mode: 'CBC', iv: new Uint8Array(16), lua: L });
   check('AES-CBC dechiffre toujours', !!(rotCbc && rotCbc.ok === true), rotCbc && rotCbc.reason);
 
+  /* ---------------- conteneur FXAP : aller-retour ----------------
+     Format v1 observe : 'FXAP' + u32 version + u16 nul + IV 16 octets
+     + charge utile en flux. Node aes-256-ctr = compteur 128 bits BE. */
+  const fxapKey = nodeCrypto.randomBytes(32);
+  const fxapIv = nodeCrypto.randomBytes(16);
+  const luaSrc = 'fxmanifest_version "cerulean"\n' +
+    'client_script "client/main.lua"\n' +
+    'server_script "server/main.lua"\n' +
+    'local state = { on = true }\n' +
+    'RegisterNetEvent("radio:toggle", function () state.on = not state.on end)\n' +
+    'print("radio framework charge")\n';
+
+  function fxapWrap(plain) {
+    const ct = nodeCrypto.createCipheriv('aes-256-ctr', fxapKey, fxapIv);
+    return new Uint8Array(Buffer.concat([
+      Buffer.from('FXAP'), Buffer.from([1, 0, 0, 0]), Buffer.from([0, 0]),
+      fxapIv, Buffer.concat([ct.update(Buffer.from(plain)), ct.final()])
+    ]));
+  }
+
+  const decSrc = await R.decrypt(fxapWrap(Buffer.from(luaSrc, 'utf8')),
+    { key: new Uint8Array(fxapKey), mode: 'AUTO', lua: L });
+  check('FXAP : source .lua dechiffree', !!(decSrc && decSrc.ok && decSrc.kind === 'source'),
+    decSrc && (decSrc.reason || decSrc.kind));
+  check('FXAP : texte restitue a l identique', !!(decSrc && decSrc.text === luaSrc),
+    decSrc && decSrc.text ? decSrc.text.slice(0, 60) : '');
+  check('FXAP : IV lue dans l en-tete', !!(decSrc && /0xa/i.test(decSrc.ivLabel || '')),
+    decSrc && decSrc.ivLabel);
+
+  const decBin = await R.decrypt(fxapWrap(bytes),
+    { key: new Uint8Array(fxapKey), mode: 'AUTO', lua: L });
+  check('FXAP : chunk .luac dechiffre', !!(decBin && decBin.ok && decBin.kind === 'bytecode'),
+    decBin && (decBin.reason || decBin.kind));
+  if (decBin && decBin.ok) {
+    check('FXAP : chunk restitue a l identique',
+      Buffer.compare(Buffer.from(decBin.data), Buffer.from(bytes.subarray(0, decBin.data.length))) === 0);
+  }
+
+  const decWrong = await R.decrypt(fxapWrap(Buffer.from(luaSrc, 'utf8')),
+    { key: nodeCrypto.randomBytes(32), mode: 'AUTO', lua: L });
+  check('FXAP : mauvaise cle rejetee', !!(decWrong && decWrong.ok === false));
+
   const encContainer = new Uint8Array(Buffer.concat([
     Buffer.from('FXAP'), nodeCrypto.randomBytes(400)
   ]));

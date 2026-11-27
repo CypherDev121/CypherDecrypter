@@ -249,13 +249,107 @@
     return clean;
   }
 
+  /* Layout conteneur escrow FXAP observé (version 1) :
+       0x00  'FXAP'      magic
+       0x04  u32 version (= 1)
+       0x08  u16 réservé (= 0)
+       0x0a  IV 16 octets
+       0x1a  charge utile — flux chiffré (taille NON alignée sur 16 : le
+             chiffrement est un mode de flux type AES-CTR, pas du CBC paddé)
+     Des variantes décalent l'IV : on essaie chaque coupure plausible, le
+     clair valide tranche. */
+  function fxapLayouts(bytes) {
+    if (bytes.length < 0x2a ||
+        bytes[0] !== 0x46 || bytes[1] !== 0x58 || bytes[2] !== 0x41 || bytes[3] !== 0x50) {
+      return null;
+    }
+    var out = [];
+    [0x0a, 0x08, 0x0c, 0x10].forEach(function (ivOff) {
+      var body = ivOff + 16;
+      if (body + 16 <= bytes.length) {
+        out.push({
+          iv: bytes.subarray(ivOff, body),
+          body: body,
+          label: 'IV FXAP @0x' + ivOff.toString(16)
+        });
+      }
+    });
+    return out;
+  }
+
+  /* Le payload escrow est le fichier d'origine : souvent la SOURCE .lua en
+     texte, pas un chunk compilé. Sans ce test, une bonne clé rendait un
+     clair parfait qui était rejeté faute de signature \x1bLua. */
+  function looksLuaSource(bytes) {
+    if (!bytes || bytes.length < 16) return null;
+    var n = Math.min(bytes.length, 262144);
+    for (var i = 0; i < n; i++) if (bytes[i] === 0) return null;
+    var text;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (e) { return null; }
+    var head = text.slice(0, n).trim();
+    if (head.length < 8) return null;
+    var printable = head.replace(/[^\x09\x0a\x0d\x20-\x7e\u00a0-\uffff]/g, '').length;
+    if (printable / head.length < 0.93) return null;
+    if (/^\s*[\{\[]/.test(head) && /[\}\]]\s*$/.test(head)) return null;
+    if (!/[=(){}\[\]]|--|\bend\b|\breturn\b|\blocal\b|\bfunction\b|_scripts?\b/i.test(head)) return null;
+    return text;
+  }
+
+  /* AES-CTR à compteur little-endian : WebCrypto n'incrémente qu'en
+     big-endian, on fabrique le flot en chiffrant chaque compteur en ECB
+     (CBC à IV nul + padding PKCS7 : le premier bloc du chiffré vaut E(compteur)). */
+  async function aesCtrLE(data, key, iv) {
+    var subtle = crypto.subtle;
+    var blocks = Math.ceil(data.length / 16);
+    if (blocks > 131072) throw new Error('charge trop grande pour CTR-LE');
+    var ck = await subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['encrypt']);
+    var zero = new Uint8Array(16);
+    var counters = new Uint8Array(blocks * 16);
+    counters.set(iv, 0);
+    for (var b = 1; b < blocks; b++) {
+      counters.set(counters.subarray((b - 1) * 16, b * 16), b * 16);
+      for (var j = 0; j < 16; j++) {
+        counters[b * 16 + j] = (counters[b * 16 + j] + 1) & 0xff;
+        if (counters[b * 16 + j] !== 0) break;
+      }
+    }
+    var out = new Uint8Array(data.length);
+    for (var off = 0; off < blocks; off += 256) {
+      var jobs = [];
+      var end = Math.min(off + 256, blocks);
+      for (var c = off; c < end; c++) {
+        jobs.push(subtle.encrypt({ name: 'AES-CBC', iv: zero }, ck, counters.subarray(c * 16, c * 16 + 16)));
+      }
+      var seals = await Promise.all(jobs);
+      for (var k = 0; k < seals.length; k++) {
+        var seal = new Uint8Array(seals[k]);
+        var base = (off + k) * 16;
+        for (var i = 0; i < 16 && base + i < data.length; i++) out[base + i] = data[base + i] ^ seal[i];
+      }
+    }
+    return out;
+  }
+
   async function aesDecrypt(data, key, mode, iv) {
     var subtle = (typeof crypto !== 'undefined' && crypto.subtle) ? crypto.subtle : null;
     if (!subtle) return { error: 'WebCrypto indisponible dans ce contexte' };
-    var len = data.length - (data.length % 16);
-    if (len < 64) return { data: null };
-    var input = data.subarray(0, len);
     try {
+      if (mode === 'CTR' || mode === 'CTR128' || mode === 'CTR-128') {
+        /* flux : PAS de troncature à 16, la queue du clair compte aussi.
+           length = nombre de bits du compteur incrémentés (128 = bloc entier). */
+        var bits = mode === 'CTR' ? 64 : 128;
+        var ctrKey = await subtle.importKey('raw', key, { name: 'AES-CTR' }, false, ['decrypt']);
+        var resCtr = await subtle.decrypt({ name: 'AES-CTR', counter: iv, length: bits }, ctrKey, data);
+        return { data: new Uint8Array(resCtr) };
+      }
+      if (mode === 'CTRLE' || mode === 'CTR-LE') return { data: await aesCtrLE(data, key, iv) };
+
+      /* modes par blocs : seuls les blocs complets passent */
+      var len = data.length - (data.length % 16);
+      if (len < 64) return { data: null };
+      var input = data.subarray(0, len);
       if (mode === 'ECB') {
         var ck = await subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt']);
         var zero = new Uint8Array(16);
@@ -265,11 +359,6 @@
           out.set(new Uint8Array(blk), off);
         }
         return { data: out };
-      }
-      if (mode === 'CTR') {
-        var ctrKey = await subtle.importKey('raw', key, { name: 'AES-CTR' }, false, ['decrypt']);
-        var resCtr = await subtle.decrypt({ name: 'AES-CTR', counter: iv, length: 64 }, ctrKey, input);
-        return { data: new Uint8Array(resCtr) };
       }
       var cbKey = await subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt']);
       var resCbc = await subtle.decrypt({ name: 'AES-CBC', iv: iv }, cbKey, input);
@@ -283,14 +372,77 @@
     options = options || {};
     var Lua54 = options.lua || (typeof Lua54 !== 'undefined' ? Lua54 : null);
     var key = options.key;
-    var mode = options.mode || 'CBC';
+    var wantMode = (options.mode || 'AUTO').toUpperCase();
     if (!key || [16, 24, 32].indexOf(key.length) === -1) {
       return { ok: false, reason: 'clé invalide : 16, 24 ou 32 octets attendus' };
     }
-    if (!Lua54) return { ok: false, reason: 'moteur Lua54 absent' };
+
+    var lastError = null;
+
+    /* Seule preuve qu'un essai a marché : le clair est du Lua — chunk
+       compilé (\x1bLua) ou source texte. Tout le reste n'est que du bruit. */
+    function accept(plain, bodyStart, modeLabel, ivLabel) {
+      var hits = scanSignatures(plain, 8);
+      for (var h = 0; h < hits.length; h++) {
+        if (!Lua54) break;
+        try {
+          var parsed = Lua54.parseChunk(plain.subarray(hits[h]));
+          return {
+            ok: true,
+            kind: 'bytecode',
+            offset: bodyStart + hits[h],
+            data: plain.subarray(hits[h], hits[h] + parsed.bytesUsed),
+            parsed: parsed,
+            mode: modeLabel,
+            ivLabel: ivLabel
+          };
+        } catch (e) { lastError = e.message; }
+      }
+      var src = looksLuaSource(plain);
+      if (src) {
+        return {
+          ok: true,
+          kind: 'source',
+          offset: bodyStart,
+          data: plain,
+          text: src,
+          parsed: null,
+          mode: modeLabel,
+          ivLabel: ivLabel
+        };
+      }
+      return null;
+    }
 
     var attempts = [];
+
+    /* Un vrai conteneur FXAP : l'IV est embarquée dans l'en-tête, la charge
+       utile est un flot. On balaie les coupures d'en-tête et les modes
+       plausibles — le mode choisi sert de priorité, pas de filtre. */
+    var layouts = fxapLayouts(bytes);
+    if (layouts) {
+      var modes = [];
+      [wantMode, 'CTR128', 'CTR', 'CBC', 'ECB', 'CTRLE'].forEach(function (m) {
+        if (m !== 'AUTO' && modes.indexOf(m) === -1) modes.push(m);
+      });
+      layouts.forEach(function (lay, li) {
+        var ivs = [{ iv: lay.iv, label: lay.label }];
+        if (options.iv && options.iv.length === 16) {
+          ivs.unshift({ iv: options.iv, label: 'IV fourni' });
+        }
+        var mset = li === 0 ? modes : modes.filter(function (m) { return m !== 'CTRLE'; });
+        ivs.forEach(function (v) {
+          mset.forEach(function (m) {
+            attempts.push({ start: lay.body, iv: v.iv, label: v.label, mode: m });
+          });
+        });
+      });
+    }
+
+    /* Chemin générique : pas d'en-tête FXAP (ou les coupures ont échoué) —
+       régions et IV devinées comme avant. */
     var regions = payloadRegions(bytes);
+    var genericModes = wantMode === 'AUTO' ? ['CTR128', 'CTR', 'CBC', 'ECB'] : [wantMode];
     var ivList = [];
     if (options.iv && options.iv.length === 16) ivList.push({ label: 'IV fourni', iv: options.iv });
     ivList.push({ label: 'IV nul', iv: new Uint8Array(16) });
@@ -298,50 +450,32 @@
     for (var ri = 0; ri < regions.length; ri++) {
       var start = regions[ri];
       for (var vi = 0; vi < ivList.length; vi++) {
-        attempts.push({ start: start, iv: ivList[vi].iv, label: ivList[vi].label });
-        if (start + 16 < bytes.length) {
-          attempts.push({
-            start: start,
-            iv: bytes.subarray(start, start + 16),
-            label: 'IV = 16 premiers octets',
-            bodySkip: 16
-          });
+        for (var gi = 0; gi < genericModes.length; gi++) {
+          attempts.push({ start: start, iv: ivList[vi].iv, label: ivList[vi].label, mode: genericModes[gi] });
+        }
+      }
+      if (start + 16 < bytes.length) {
+        var fileIv = bytes.subarray(start, start + 16);
+        for (var fj = 0; fj < genericModes.length; fj++) {
+          attempts.push({ start: start + 16, iv: fileIv, label: 'IV = 16 premiers octets', mode: genericModes[fj] });
         }
       }
     }
 
-    var lastError = null;
     for (var a = 0; a < attempts.length; a++) {
       var at = attempts[a];
-      var bodyStart = at.start + (at.bodySkip || 0);
-      var payload = bytes.subarray(bodyStart);
-      var res = await aesDecrypt(payload, key, mode, at.iv);
+      var res = await aesDecrypt(bytes.subarray(at.start), key, at.mode, at.iv);
       if (!res || !res.data) {
         if (res && res.error) lastError = res.error;
         continue;
       }
-      var plain = res.data;
-      var hits = scanSignatures(plain, 4);
-      for (var h = 0; h < hits.length; h++) {
-        try {
-          var parsed = Lua54.parseChunk(plain.subarray(hits[h]));
-          return {
-            ok: true,
-            offset: bodyStart + hits[h],
-            data: plain.subarray(hits[h], hits[h] + parsed.bytesUsed),
-            parsed: parsed,
-            mode: mode,
-            ivLabel: at.label
-          };
-        } catch (e) {
-          lastError = e.message;
-        }
-      }
+      var hit = accept(res.data, at.start, at.mode, at.label);
+      if (hit) return hit;
     }
 
     return {
       ok: false,
-      reason: 'aucune signature de chunk Lua trouvée dans le texte déchiffré' +
+      reason: 'aucune signature de chunk Lua ni source lisible dans le texte déchiffré' +
         (lastError ? ' (' + lastError + ')' : '')
     };
   }
@@ -351,6 +485,8 @@
     decrypt: decrypt,
     parseKey: parseKey,
     scanSignatures: scanSignatures,
-    payloadRegions: payloadRegions
+    payloadRegions: payloadRegions,
+    fxapLayouts: fxapLayouts,
+    looksLuaSource: looksLuaSource
   };
 });

@@ -129,11 +129,12 @@
         <div class="keyrow">
           <input id="key-input" type="password" autocomplete="off" spellcheck="false" placeholder="Clé AES — hex ou base64 (16, 24 ou 32 octets)" />
           <select id="key-mode" aria-label="Mode de chiffrement">
+            <option value="AUTO" selected>Auto</option>
             <option value="CBC">AES-CBC</option>
             <option value="CTR">AES-CTR</option>
             <option value="ECB">AES-ECB</option>
           </select>
-          <input id="iv-input" type="text" autocomplete="off" spellcheck="false" placeholder="IV optionnel (16 octets)" />
+          <input id="iv-input" type="text" autocomplete="off" spellcheck="false" placeholder="IV optionnel (sinon lu dans l'en-tête FXAP)" />
           <button class="btn btn-primary" type="submit">Déchiffrer</button>
         </div>
       </form>
