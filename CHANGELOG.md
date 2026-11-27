@@ -5,6 +5,23 @@ Format [SemVer](https://semver.org/lang/fr/).
 
 Le fichier `VERSION`, `package.json` et `src-tauri/tauri.conf.json` portent la meme version : il suffit de les aligner (et ce changelog) pour publier.
 
+## [7.0.6] - 2026-11-26
+
+### Corrige
+
+- **Decryptage FXAP fonctionnel avec la cle escrow** : le vrai layout du conteneur est maintenant utilise (IV 16 octets a `0x0a`, charge utile a `0x1a`) au lieu d'offsets generiques qui ne la testaient jamais.
+- Le clair est valide en **source .lua texte** et plus seulement en signature `\x1bLua` : un .lua escrow decrypte vers sa source, qui etait rejetee meme avec la bonne cle.
+- AES-CTR : le flux n'est plus tronque a un multiple de 16 octets (la queue du fichier etait perdue) ; variantes de compteur 128 bits et little-endian essayees.
+- Le wrapper ECB de compat laisse passer les conteneurs FXAP vers la logique de layout.
+
+### Ajoute
+
+- Resultat « source » gere partout : formulaire de cle, lot `fxapChunks`, export `.lua`.
+- Selecteur de mode « Auto » par defaut (essaie CTR-128, CTR-64, CBC, ECB) ; l'IV est lue automatiquement dans l'en-tete FXAP quand elle n'est pas fournie.
+- Le rapport d'analyse FXAP detaille la structure du conteneur (version, offset de l'IV, offset de la charge utile).
+- `AGENTS.md` a la racine : commandes de build/test et conventions pour les agents.
+- Tests aller-retour FXAP dans `tests/verify-decrypt.cjs` (source + chunk + rejet de mauvaise cle).
+
 ## [7.0.0] - 2026-11-20
 
 ### Ajoute
